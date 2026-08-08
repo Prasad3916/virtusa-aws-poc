@@ -1,0 +1,37 @@
+target/
+*.class
+*.jar
+*.war
+.idea/
+*.iml
+.DS_Store
+*.log
+
+# Node.js
+**/node_modules/
+**/dist/
+**/.env*
+*.zip
+
+# Uploads & Runtime Data
+**/uploads/
+*.log
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Maven & Java
+**/target/
+*.class
+*.jar
+*.war
+
+# IDE & OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
