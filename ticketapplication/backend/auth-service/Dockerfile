@@ -1,17 +1,13 @@
-FROM eclipse-temurin:17-jdk-alpine AS builder
-WORKDIR /build
+# Stage 1: Build JAR using Maven
+FROM maven:3.9.6-eclipse-temurin-17-alpine AS build
+WORKDIR /app
 COPY pom.xml .
 COPY src ./src
-RUN apk add --no-cache maven && mvn clean package -DskipTests
+RUN mvn clean package -DskipTests
 
+# Stage 2: Production JRE runtime
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-COPY --from=builder /build/target/*.jar app.jar
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh \
- && addgroup -S appgroup \
- && adduser -S appuser -G appgroup \
- && chown -R appuser:appgroup /app
-USER appuser
+COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8089
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

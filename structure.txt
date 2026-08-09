@@ -1,0 +1,254 @@
+Folder PATH listing for volume Windows
+Volume serial number is 00000043 90F5:4C94
+C:.
+¦   structure.txt
+¦   
++---ticketapplication
+    ¦   .gitignore
+    ¦   docker-compose.yml
+    ¦   start-all.bat
+    ¦   stop-all.bat
+    ¦   
+    +---backend
+    ¦   +---api-gateway
+    ¦   ¦   ¦   docker-entrypoint.sh
+    ¦   ¦   ¦   Dockerfile
+    ¦   ¦   ¦   pom.xml
+    ¦   ¦   ¦   
+    ¦   ¦   +---src
+    ¦   ¦       +---main
+    ¦   ¦           +---java
+    ¦   ¦           ¦   +---com
+    ¦   ¦           ¦       +---ticketdesk
+    ¦   ¦           ¦           +---gateway
+    ¦   ¦           ¦                   ApiGatewayApplication.java
+    ¦   ¦           ¦                   
+    ¦   ¦           +---resources
+    ¦   ¦                   application.yml
+    ¦   ¦                   
+    ¦   +---attachment-service
+    ¦   ¦   ¦   docker-entrypoint.sh
+    ¦   ¦   ¦   Dockerfile
+    ¦   ¦   ¦   pom.xml
+    ¦   ¦   ¦   
+    ¦   ¦   +---src
+    ¦   ¦       +---main
+    ¦   ¦           +---java
+    ¦   ¦           ¦   +---com
+    ¦   ¦           ¦       +---ticketdesk
+    ¦   ¦           ¦           +---attachment
+    ¦   ¦           ¦               ¦   AttachmentServiceApplication.java
+    ¦   ¦           ¦               ¦   
+    ¦   ¦           ¦               +---config
+    ¦   ¦           ¦               ¦       SecurityConfig.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---controller
+    ¦   ¦           ¦               ¦       AttachmentController.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---dto
+    ¦   ¦           ¦               ¦       ApiResponse.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---entity
+    ¦   ¦           ¦               ¦       Attachment.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---repository
+    ¦   ¦           ¦                       AttachmentRepository.java
+    ¦   ¦           ¦                       
+    ¦   ¦           +---resources
+    ¦   ¦                   application.yml
+    ¦   ¦                   
+    ¦   +---auth-service
+    ¦   ¦   ¦   docker-entrypoint.sh
+    ¦   ¦   ¦   Dockerfile
+    ¦   ¦   ¦   pom.xml
+    ¦   ¦   ¦   
+    ¦   ¦   +---src
+    ¦   ¦       +---main
+    ¦   ¦           +---java
+    ¦   ¦           ¦   +---com
+    ¦   ¦           ¦       +---ticketdesk
+    ¦   ¦           ¦           +---auth
+    ¦   ¦           ¦               ¦   AuthServiceApplication.java
+    ¦   ¦           ¦               ¦   
+    ¦   ¦           ¦               +---config
+    ¦   ¦           ¦               ¦       GlobalExceptionHandler.java
+    ¦   ¦           ¦               ¦       SecurityConfig.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---controller
+    ¦   ¦           ¦               ¦       AuthController.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---dto
+    ¦   ¦           ¦               ¦       LoginRequest.java
+    ¦   ¦           ¦               ¦       RegisterRequest.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---entity
+    ¦   ¦           ¦               ¦       UserAccount.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---repository
+    ¦   ¦           ¦               ¦       UserRepository.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---seeder
+    ¦   ¦           ¦               ¦       AdminSeeder.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---util
+    ¦   ¦           ¦                       JwtUtil.java
+    ¦   ¦           ¦                       
+    ¦   ¦           +---resources
+    ¦   ¦                   application.yml
+    ¦   ¦                   
+    ¦   +---comment-service
+    ¦   ¦   ¦   docker-entrypoint.sh
+    ¦   ¦   ¦   Dockerfile
+    ¦   ¦   ¦   pom.xml
+    ¦   ¦   ¦   
+    ¦   ¦   +---src
+    ¦   ¦       +---main
+    ¦   ¦           +---java
+    ¦   ¦           ¦   +---com
+    ¦   ¦           ¦       +---ticketdesk
+    ¦   ¦           ¦           +---comment
+    ¦   ¦           ¦               ¦   CommentServiceApplication.java
+    ¦   ¦           ¦               ¦   
+    ¦   ¦           ¦               +---config
+    ¦   ¦           ¦               ¦       SecurityConfig.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---controller
+    ¦   ¦           ¦               ¦       CommentController.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---dto
+    ¦   ¦           ¦               ¦       AddCommentRequest.java
+    ¦   ¦           ¦               ¦       ApiResponse.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---entity
+    ¦   ¦           ¦               ¦       TicketComment.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---repository
+    ¦   ¦           ¦                       CommentRepository.java
+    ¦   ¦           ¦                       
+    ¦   ¦           +---resources
+    ¦   ¦                   application.yml
+    ¦   ¦                   
+    ¦   +---dashboard-service
+    ¦   ¦   ¦   docker-entrypoint.sh
+    ¦   ¦   ¦   Dockerfile
+    ¦   ¦   ¦   pom.xml
+    ¦   ¦   ¦   
+    ¦   ¦   +---src
+    ¦   ¦       +---main
+    ¦   ¦           +---java
+    ¦   ¦           ¦   +---com
+    ¦   ¦           ¦       +---ticketdesk
+    ¦   ¦           ¦           +---dashboard
+    ¦   ¦           ¦               ¦   DashboardServiceApplication.java
+    ¦   ¦           ¦               ¦   
+    ¦   ¦           ¦               +---config
+    ¦   ¦           ¦               ¦       SecurityConfig.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---controller
+    ¦   ¦           ¦               ¦       DashboardController.java
+    ¦   ¦           ¦               ¦       
+    ¦   ¦           ¦               +---dto
+    ¦   ¦           ¦                       ApiResponse.java
+    ¦   ¦           ¦                       
+    ¦   ¦           +---resources
+    ¦   ¦                   application.yml
+    ¦   ¦                   
+    ¦   +---eureka-server
+    ¦   ¦   ¦   docker-entrypoint.sh
+    ¦   ¦   ¦   Dockerfile
+    ¦   ¦   ¦   pom.xml
+    ¦   ¦   ¦   
+    ¦   ¦   +---src
+    ¦   ¦       +---main
+    ¦   ¦           +---java
+    ¦   ¦           ¦   +---com
+    ¦   ¦           ¦       +---ticketdesk
+    ¦   ¦           ¦           +---eureka
+    ¦   ¦           ¦                   EurekaServerApplication.java
+    ¦   ¦           ¦                   
+    ¦   ¦           +---resources
+    ¦   ¦                   application.yml
+    ¦   ¦                   
+    ¦   +---ticket-service
+    ¦       ¦   docker-entrypoint.sh
+    ¦       ¦   Dockerfile
+    ¦       ¦   pom.xml
+    ¦       ¦   
+    ¦       +---src
+    ¦           +---main
+    ¦               +---java
+    ¦               ¦   +---com
+    ¦               ¦       +---ticketdesk
+    ¦               ¦           +---ticket
+    ¦               ¦               ¦   TicketServiceApplication.java
+    ¦               ¦               ¦   
+    ¦               ¦               +---config
+    ¦               ¦               ¦       SecurityConfig.java
+    ¦               ¦               ¦       
+    ¦               ¦               +---controller
+    ¦               ¦               ¦       DashboardController.java
+    ¦               ¦               ¦       TicketController.java
+    ¦               ¦               ¦       
+    ¦               ¦               +---dto
+    ¦               ¦               ¦   +---request
+    ¦               ¦               ¦   ¦       AddCommentRequest.java
+    ¦               ¦               ¦   ¦       AssignTicketRequest.java
+    ¦               ¦               ¦   ¦       CreateTicketRequest.java
+    ¦               ¦               ¦   ¦       UpdateStatusRequest.java
+    ¦               ¦               ¦   ¦       
+    ¦               ¦               ¦   +---response
+    ¦               ¦               ¦           ApiResponse.java
+    ¦               ¦               ¦           
+    ¦               ¦               +---entity
+    ¦               ¦               ¦       Comment.java
+    ¦               ¦               ¦       Ticket.java
+    ¦               ¦               ¦       
+    ¦               ¦               +---enums
+    ¦               ¦               ¦       TicketCategory.java
+    ¦               ¦               ¦       TicketPriority.java
+    ¦               ¦               ¦       TicketStatus.java
+    ¦               ¦               ¦       
+    ¦               ¦               +---exception
+    ¦               ¦               ¦       GlobalExceptionHandler.java
+    ¦               ¦               ¦       ResourceNotFoundException.java
+    ¦               ¦               ¦       
+    ¦               ¦               +---repository
+    ¦               ¦               ¦       TicketRepository.java
+    ¦               ¦               ¦       
+    ¦               ¦               +---service
+    ¦               ¦                   ¦   TicketService.java
+    ¦               ¦                   ¦   
+    ¦               ¦                   +---impl
+    ¦               ¦                           TicketServiceImpl.java
+    ¦               ¦                           
+    ¦               +---resources
+    ¦                       application.yml
+    ¦                       
+    +---frontend
+        ¦   Dockerfile
+        ¦   index.html
+        ¦   nginx.conf
+        ¦   package-lock.json
+        ¦   package.json
+        ¦   vite.config.js
+        ¦   
+        +---src
+            ¦   App.jsx
+            ¦   main.jsx
+            ¦   
+            +---components
+            ¦       AdminPanel.jsx
+            ¦       CreateTicketForm.jsx
+            ¦       KpiDashboard.jsx
+            ¦       Navbar.jsx
+            ¦       TicketQueue.jsx
+            ¦       
+            +---context
+            ¦       AuthContext.jsx
+            ¦       
+            +---pages
+            ¦       LoginPage.jsx
+            ¦       
+            +---services
+                    api.js
+                    

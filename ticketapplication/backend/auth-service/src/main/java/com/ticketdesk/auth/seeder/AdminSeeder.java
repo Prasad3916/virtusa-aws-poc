@@ -30,5 +30,25 @@ public class AdminSeeder implements ApplicationRunner {
             ));
             System.out.println("[Auth] Default ADMIN seeded → admin@ticketdesk.com / admin123");
         }
+
+        if (!userRepository.existsByEmail("agent@ticketdesk.com")) {
+            userRepository.save(new UserAccount(
+                    "Support Agent",
+                    "agent@ticketdesk.com",
+                    "agent123",
+                    UserAccount.Role.AGENT
+            ));
+            System.out.println("[Auth] Default AGENT seeded → agent@ticketdesk.com / agent123");
+        }
+
+        if (!userRepository.existsByEmail("user@ticketdesk.com")) {
+            userRepository.save(new UserAccount(
+                    "Standard User",
+                    "user@ticketdesk.com",
+                    "user123",
+                    UserAccount.Role.USER
+            ));
+            System.out.println("[Auth] Default USER seeded → user@ticketdesk.com / user123");
+        }
     }
 }
