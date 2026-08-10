@@ -78,8 +78,10 @@ jobs:
       - name: Terraform Init & Apply
         run: |
           cd terraform
-          terraform init
+          rm -f .terraform.lock.hcl
+          terraform init -upgrade
           terraform apply -auto-approve
+
 
   # ── Stage 4: Containerize & Push to AWS ECR ────────────────────────────────
   build-and-push-ecr:
