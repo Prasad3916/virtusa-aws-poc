@@ -25,9 +25,10 @@ resource "aws_db_instance" "main" {
   # Security & Backup Configuration (Checklist #16, #20, #21)
   publicly_accessible     = false
   storage_encrypted       = true
-  backup_retention_period = 7
+  backup_retention_period = 1
   skip_final_snapshot     = true
   deletion_protection     = false
+
 
   tags = {
     Name = "${var.project_name}-mysql-db"

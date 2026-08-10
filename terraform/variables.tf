@@ -69,3 +69,10 @@ variable "alarm_email" {
   description = "Email address for SNS CloudWatch alarm notifications"
   default     = "admin@example.com"
 }
+
+variable "enable_cloudfront" {
+  type        = bool
+  description = "Enable CloudFront CDN distribution (requires verified AWS account)"
+  default     = false
+}
+

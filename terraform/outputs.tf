@@ -1,7 +1,8 @@
 output "cloudfront_domain_name" {
   description = "CloudFront Distribution Domain Name (Static App & API Gateway)"
-  value       = aws_cloudfront_distribution.cdn.domain_name
+  value       = var.enable_cloudfront ? aws_cloudfront_distribution.cdn[0].domain_name : aws_lb.main.dns_name
 }
+
 
 output "alb_dns_name" {
   description = "Application Load Balancer DNS Name"
