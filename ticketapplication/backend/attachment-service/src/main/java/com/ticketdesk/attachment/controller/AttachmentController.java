@@ -29,9 +29,61 @@ public class AttachmentController {
     @Value("${app.upload.dir:./uploads}")
     private String uploadDir;
 
+    @Value("${aws.s3.bucket:ticketdesk-attachments}")
+    private String s3Bucket;
+
+    @Value("${aws.region:us-east-1}")
+    private String awsRegion;
+
     public AttachmentController(AttachmentRepository repo) {
         this.repo = repo;
     }
+
+    /**
+     * GET /api/v1/attachments/ticket/{ticketId}/presigned-url
+     * Generate presigned S3 URL for direct browser-to-S3 upload (Milestone M5).
+     */
+    @GetMapping("/ticket/{ticketId}/presigned-url")
+    public ResponseEntity<ApiResponse<java.util.Map<String, String>>> getPresignedUrl(
+            @PathVariable Long ticketId,
+            @RequestParam("fileName") String fileName,
+            @RequestParam(value = "contentType", defaultValue = "image/png") String contentType) {
+
+        String key = "uploads/" + ticketId + "/" + UUID.randomUUID() + "_" + fileName;
+
+        try (software.amazon.awssdk.services.s3.presigner.S3Presigner presigner =
+                     software.amazon.awssdk.services.s3.presigner.S3Presigner.builder()
+                             .region(software.amazon.awssdk.regions.Region.of(awsRegion))
+                             .build()) {
+
+            software.amazon.awssdk.services.s3.model.PutObjectRequest objectRequest =
+                    software.amazon.awssdk.services.s3.model.PutObjectRequest.builder()
+                            .bucket(s3Bucket)
+                            .key(key)
+                            .contentType(contentType)
+                            .build();
+
+            software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest presignRequest =
+                    software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest.builder()
+                            .signatureDuration(java.time.Duration.ofMinutes(15))
+                            .putObjectRequest(objectRequest)
+                            .build();
+
+            software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest presignedRequest =
+                    presigner.presignPutObject(presignRequest);
+
+            java.util.Map<String, String> responseData = new java.util.HashMap<>();
+            responseData.put("uploadUrl", presignedRequest.url().toString());
+            responseData.put("key", key);
+            responseData.put("bucket", s3Bucket);
+
+            return ResponseEntity.ok(ApiResponse.success("Presigned S3 upload URL generated", responseData));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to generate presigned S3 URL: " + e.getMessage()));
+        }
+    }
+
 
     /**
      * POST /api/v1/attachments/ticket/{ticketId}/upload
