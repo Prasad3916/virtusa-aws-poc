@@ -110,6 +110,17 @@ if aws cloudwatch describe-alarms --alarm-names "TicketDesk-RDS-High-CPU" --regi
 fi
 
 
+# 13. S3 Buckets
+if [ -n "$ACCOUNT_ID" ]; then
+  if aws s3api head-bucket --bucket "ticketdesk-frontend-$ACCOUNT_ID" >/dev/null 2>&1; then
+    terraform import aws_s3_bucket.frontend "ticketdesk-frontend-$ACCOUNT_ID" || true
+  fi
+  if aws s3api head-bucket --bucket "ticketdesk-attachments-$ACCOUNT_ID" >/dev/null 2>&1; then
+    terraform import aws_s3_bucket.attachments "ticketdesk-attachments-$ACCOUNT_ID" || true
+  fi
+fi
+
 echo "Import check complete. Proceeding with terraform apply..."
+
 
 

@@ -1,6 +1,6 @@
 # 1. S3 Bucket for Static Frontend Build (Non-public)
 resource "aws_s3_bucket" "frontend" {
-  bucket        = "${lower(var.project_name)}-frontend-bucket-${random_password.bucket_suffix.result}"
+  bucket        = "${lower(var.project_name)}-frontend-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
 
   tags = {
@@ -8,11 +8,6 @@ resource "aws_s3_bucket" "frontend" {
   }
 }
 
-resource "random_password" "bucket_suffix" {
-  length  = 8
-  special = false
-  upper   = false
-}
 
 # Block all public access (Checklist #22)
 resource "aws_s3_bucket_public_access_block" "frontend_block" {

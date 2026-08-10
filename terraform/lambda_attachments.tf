@@ -1,12 +1,13 @@
 # 1. S3 Bucket for Attachments (Public Access Blocked, CORS enabled)
 resource "aws_s3_bucket" "attachments" {
-  bucket        = "${lower(var.project_name)}-attachments-${random_password.bucket_suffix.result}"
+  bucket        = "${lower(var.project_name)}-attachments-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
 
   tags = {
     Name = "${var.project_name}-attachments-bucket"
   }
 }
+
 
 # Encryption at rest (Checklist #20)
 resource "aws_s3_bucket_server_side_encryption_configuration" "attachments_enc" {
@@ -122,12 +123,13 @@ resource "aws_lambda_function" "thumbnail_generator" {
 
 # 5. Permission for S3 to invoke Lambda
 resource "aws_lambda_permission" "allow_s3_invoke" {
-  statement_id  = "AllowS3InvokeThumbnailGenerator-${random_password.bucket_suffix.result}"
+  statement_id  = "AllowS3InvokeThumbnailGenerator-${data.aws_caller_identity.current.account_id}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.thumbnail_generator.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = aws_s3_bucket.attachments.arn
 }
+
 
 
 # 6. S3 Event Notification triggering Lambda on object creation under uploads/

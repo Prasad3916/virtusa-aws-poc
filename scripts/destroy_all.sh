@@ -18,9 +18,16 @@ chmod +x ../scripts/terraform_import_existing.sh
 ../scripts/terraform_import_existing.sh || true
 
 # 3. Execute Terraform Destroy
-echo "[3/3] Executing terraform destroy..."
-terraform destroy -auto-approve
+echo "[3/4] Executing terraform destroy..."
+terraform destroy -auto-approve || true
+
+# 4. Forceful AWS Account Cleanup
+echo "[4/4] Running full AWS resource wipeout scan..."
+cd ..
+chmod +x ./scripts/nuke_all_aws_resources.sh
+./scripts/nuke_all_aws_resources.sh
 
 echo "=========================================================="
 echo "✔ ALL TICKETDESK AWS RESOURCES HAVE BEEN DESTROYED!"
 echo "=========================================================="
+
