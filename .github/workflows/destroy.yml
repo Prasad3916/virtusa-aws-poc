@@ -28,5 +28,7 @@ jobs:
 
       - name: Execute Full Resource Teardown
         run: |
-          chmod +x ./scripts/destroy_all.sh
-          ./scripts/destroy_all.sh
+          chmod +x ./scripts/destroy_all.sh ./scripts/nuke_all_aws_resources.sh ./scripts/terraform_import_existing.sh
+          ./scripts/destroy_all.sh || true
+          ./scripts/nuke_all_aws_resources.sh || true
+

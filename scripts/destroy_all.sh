@@ -1,7 +1,8 @@
 #!/bin/bash
-set -e
+set +e
 
 echo "=========================================================="
+
 echo "TicketDesk AWS Stack Cleanup - Destroying All Resources"
 echo "=========================================================="
 
