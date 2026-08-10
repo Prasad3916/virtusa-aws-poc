@@ -75,14 +75,13 @@ jobs:
         with:
           terraform_version: 1.9.5
 
-
-      - name: Terraform Init & Apply
+      - name: Import Existing Resources & Apply Terraform
         run: |
+          chmod +x ./scripts/terraform_import_existing.sh
+          ./scripts/terraform_import_existing.sh
           cd terraform
-          rm -f .terraform.lock.hcl
           terraform init -upgrade
           terraform apply -auto-approve
-
 
   # ── Stage 4: Containerize & Push to AWS ECR ────────────────────────────────
   build-and-push-ecr:
@@ -107,10 +106,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure ECR Repository Exists
-        run: |
-          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} || true
-
       - name: Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -128,7 +123,7 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-  # ── Stage 5: Deploy to AWS ECS Fargate ─────────────────────────────────────
+  # ── Stage 5: Deploy to AWS ECS Fargate & Wait for Stability ─────────────────
   deploy-ecs:
     name: Deploy to ECS Fargate
     needs: build-and-push-ecr
@@ -142,15 +137,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update ECS Service Rolling Deployment
+      - name: Trigger ECS Rolling Deployment & Wait for Stability
         run: |
+          echo "Initiating ECS service rolling deployment..."
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
             --force-new-deployment \
-            --region ${{ env.AWS_REGION }} || echo "ECS service rolling deployment initiated."
+            --region ${{ env.AWS_REGION }}
 
-  # ── Stage 6: Post-Deployment Smoke Test ────────────────────────────────────
+          echo "Waiting for ECS service tasks to reach STABLE state..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }}
+
+  # ── Stage 6: Post-Deployment Smoke Test (Blocking Failure) ─────────────────
   smoke-test:
     name: Post-Deploy Smoke Tests
     needs: deploy-ecs
@@ -167,9 +169,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Execute Smoke Tests
-        env:
-          TARGET_URL: ${{ secrets.DEPLOYED_APP_URL }}
+      - name: Get ALB URL & Execute Strict Smoke Tests
         run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region ${{ env.AWS_REGION }} --query "LoadBalancers[0].DNSName" --output text 2>/dev/null || echo "")
+          if [ -n "$ALB_DNS" ]; then
+            export TARGET_URL="http://$ALB_DNS"
+          else
+            export TARGET_URL="${{ secrets.DEPLOYED_APP_URL }}"
+          fi
+
+          echo "Running post-deployment smoke test against: $TARGET_URL"
           chmod +x ./scripts/smoke_test.sh
-          ./scripts/smoke_test.sh || echo "Smoke test execution logged."
+          ./scripts/smoke_test.sh
