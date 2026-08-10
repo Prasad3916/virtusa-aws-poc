@@ -77,5 +77,30 @@ if [ -n "$ACCOUNT_ID" ]; then
   terraform import aws_sns_topic.alarms "arn:aws:sns:us-east-1:$ACCOUNT_ID:TicketDesk-alarms-topic" || true
 fi
 
+# 10. Lambda Function
+if aws lambda get-function --function-name "TicketDesk-thumbnail-generator" --region us-east-1 >/dev/null 2>&1; then
+  echo "Importing existing Lambda function TicketDesk-thumbnail-generator..."
+  terraform import aws_lambda_function.thumbnail_generator "TicketDesk-thumbnail-generator" || true
+fi
+
+# 11. ALB Listener
+if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+  LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --region us-east-1 --query "Listeners[0].ListenerArn" --output text 2>/dev/null || echo "")
+  if [ -n "$LISTENER_ARN" ] && [ "$LISTENER_ARN" != "None" ]; then
+    echo "Importing existing ALB HTTP listener..."
+    terraform import aws_lb_listener.http "$LISTENER_ARN" || true
+  fi
+fi
+
+# 12. CloudWatch Dashboard & Alarms
+if aws cloudwatch get-dashboard --dashboard-name "TicketDesk-Dashboard" --region us-east-1 >/dev/null 2>&1; then
+  terraform import aws_cloudwatch_dashboard.main "TicketDesk-Dashboard" || true
+fi
+
+terraform import aws_cloudwatch_metric_alarm.alb_5xx "TicketDesk-ALB-5xx-Errors" || true
+terraform import aws_cloudwatch_metric_alarm.unhealthy_targets "TicketDesk-Unhealthy-Targets" || true
+terraform import aws_cloudwatch_metric_alarm.rds_high_cpu "TicketDesk-RDS-High-CPU" || true
+
 echo "Import check complete. Proceeding with terraform apply..."
+
 
