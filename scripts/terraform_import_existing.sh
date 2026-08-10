@@ -5,7 +5,12 @@ echo "Checking and importing pre-existing AWS resources into Terraform state..."
 
 cd terraform
 
+echo "Initializing Terraform providers..."
+rm -f .terraform.lock.hcl
+terraform init -upgrade
+
 # 1. ECR Repository
+
 if aws ecr describe-repositories --repository-names ticketdesk-api --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing ECR repository ticketdesk-api..."
   terraform import aws_ecr_repository.api ticketdesk-api || true
@@ -67,4 +72,10 @@ if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
   terraform import aws_lb_target_group.api "$TG_ARN" || true
 fi
 
+# 9. SNS Topic
+if [ -n "$ACCOUNT_ID" ]; then
+  terraform import aws_sns_topic.alarms "arn:aws:sns:us-east-1:$ACCOUNT_ID:TicketDesk-alarms-topic" || true
+fi
+
 echo "Import check complete. Proceeding with terraform apply..."
+

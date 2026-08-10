@@ -80,8 +80,8 @@ jobs:
           chmod +x ./scripts/terraform_import_existing.sh
           ./scripts/terraform_import_existing.sh
           cd terraform
-          terraform init -upgrade
           terraform apply -auto-approve
+
 
   # ── Stage 4: Containerize & Push to AWS ECR ────────────────────────────────
   build-and-push-ecr:
