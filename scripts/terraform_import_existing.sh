@@ -97,9 +97,18 @@ if aws cloudwatch get-dashboard --dashboard-name "TicketDesk-Dashboard" --region
   terraform import aws_cloudwatch_dashboard.main "TicketDesk-Dashboard" || true
 fi
 
-terraform import aws_cloudwatch_metric_alarm.alb_5xx "TicketDesk-ALB-5xx-Errors" || true
-terraform import aws_cloudwatch_metric_alarm.unhealthy_targets "TicketDesk-Unhealthy-Targets" || true
-terraform import aws_cloudwatch_metric_alarm.rds_high_cpu "TicketDesk-RDS-High-CPU" || true
+if aws cloudwatch describe-alarms --alarm-names "TicketDesk-ALB-5xx-Errors" --region us-east-1 | grep "TicketDesk-ALB-5xx-Errors" >/dev/null 2>&1; then
+  terraform import aws_cloudwatch_metric_alarm.alb_5xx "TicketDesk-ALB-5xx-Errors" || true
+fi
+
+if aws cloudwatch describe-alarms --alarm-names "TicketDesk-Unhealthy-Targets" --region us-east-1 | grep "TicketDesk-Unhealthy-Targets" >/dev/null 2>&1; then
+  terraform import aws_cloudwatch_metric_alarm.unhealthy_targets "TicketDesk-Unhealthy-Targets" || true
+fi
+
+if aws cloudwatch describe-alarms --alarm-names "TicketDesk-RDS-High-CPU" --region us-east-1 | grep "TicketDesk-RDS-High-CPU" >/dev/null 2>&1; then
+  terraform import aws_cloudwatch_metric_alarm.rds_high_cpu "TicketDesk-RDS-High-CPU" || true
+fi
+
 
 echo "Import check complete. Proceeding with terraform apply..."
 

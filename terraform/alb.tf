@@ -36,7 +36,12 @@ resource "aws_lb_target_group" "api" {
   tags = {
     Name = "${var.project_name}-tg"
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
+
 
 # 3. HTTP Listener
 resource "aws_lb_listener" "http" {
