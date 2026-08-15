@@ -1,4 +1,4 @@
-# 1. DB Subnet Group across private subnets
+# 1. DB Subnet Group across private subnets (Checklist #16)
 resource "aws_db_subnet_group" "main" {
   name       = "${lower(var.project_name)}-db-subnet-group"
   subnet_ids = aws_subnet.private[*].id
@@ -8,7 +8,7 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# 2. RDS MySQL Instance
+# 2. RDS MySQL Instance (Checklist #16)
 resource "aws_db_instance" "main" {
   identifier             = "${lower(var.project_name)}-mysql-db"
   allocated_storage      = 20
@@ -28,7 +28,6 @@ resource "aws_db_instance" "main" {
   backup_retention_period = 1
   skip_final_snapshot     = true
   deletion_protection     = false
-
 
   tags = {
     Name = "${var.project_name}-mysql-db"

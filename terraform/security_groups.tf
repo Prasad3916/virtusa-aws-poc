@@ -1,4 +1,4 @@
-# 1. Security Group for Application Load Balancer (Public)
+# 1. Security Group for Application Load Balancer (Checklist #10)
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
   description = "Security Group for Public Application Load Balancer"
@@ -25,15 +25,15 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# 2. Security Group for ECS Tasks (Private)
+# 2. Security Group for ECS Tasks (Checklist #11)
 resource "aws_security_group" "ecs_task" {
   name        = "${var.project_name}-ecs-task-sg"
   description = "Security Group for ECS Fargate API tasks"
   vpc_id      = aws_vpc.main.id
 
-  # Strict security rule: Allow ingress ONLY from ALB Security Group
+  # Strict Security SG Chaining: Ingress ONLY from ALB SG
   ingress {
-    description     = "Allow app traffic only from ALB"
+    description     = "Allow app traffic strictly from ALB SG"
     from_port       = var.app_port
     to_port         = var.app_port
     protocol        = "tcp"
@@ -41,7 +41,7 @@ resource "aws_security_group" "ecs_task" {
   }
 
   egress {
-    description = "Allow all outbound traffic for dependencies/AWS services"
+    description = "Allow all outbound traffic for dependencies"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -53,13 +53,13 @@ resource "aws_security_group" "ecs_task" {
   }
 }
 
-# 3. Security Group for RDS MySQL Database (Private)
+# 3. Security Group for RDS MySQL Database (Checklist #12)
 resource "aws_security_group" "rds" {
   name        = "${var.project_name}-rds-sg"
   description = "Security Group for RDS MySQL Database"
   vpc_id      = aws_vpc.main.id
 
-  # Strict security rule: Allow MySQL port 3306 ONLY from ECS Tasks Security Group
+  # Strict Security SG Chaining: Ingress ONLY from ECS Task SG
   ingress {
     description     = "Allow MySQL ingress strictly from ECS Tasks SG"
     from_port       = 3306

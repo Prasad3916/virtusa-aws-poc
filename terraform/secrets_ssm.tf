@@ -5,7 +5,7 @@ resource "random_password" "db_password" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-# 2. Secrets Manager Secret for DB Credentials
+# 2. Secrets Manager Secret for DB Credentials (Checklist #15)
 resource "aws_secretsmanager_secret" "db_credentials" {
   name                    = "${var.project_name}-db-credentials"
   recovery_window_in_days = 0
@@ -15,7 +15,7 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   }
 }
 
-# 3. Secret Version holding JSON object
+# 3. Secret Version holding JSON object (Checklist #15)
 resource "aws_secretsmanager_secret_version" "db_credentials_val" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
   secret_string = jsonencode({
@@ -26,7 +26,7 @@ resource "aws_secretsmanager_secret_version" "db_credentials_val" {
   })
 }
 
-# 4. SSM Parameter Store - Database Host
+# 4. SSM Parameter Store - Database Host (Checklist #15)
 resource "aws_ssm_parameter" "db_host" {
   name        = "/${lower(var.project_name)}/DB_HOST"
   description = "Database Host endpoint"
@@ -35,7 +35,7 @@ resource "aws_ssm_parameter" "db_host" {
   overwrite   = true
 }
 
-# 5. SSM Parameter Store - Database Name
+# 5. SSM Parameter Store - Database Name (Checklist #15)
 resource "aws_ssm_parameter" "db_name" {
   name        = "/${lower(var.project_name)}/DB_NAME"
   description = "Database Name"
@@ -44,7 +44,7 @@ resource "aws_ssm_parameter" "db_name" {
   overwrite   = true
 }
 
-# 6. SSM Parameter Store - S3 Attachments Bucket
+# 6. SSM Parameter Store - S3 Attachments Bucket (Checklist #15)
 resource "aws_ssm_parameter" "s3_bucket" {
   name        = "/${lower(var.project_name)}/S3_BUCKET"
   description = "S3 Attachments Bucket Name"

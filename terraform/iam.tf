@@ -10,18 +10,19 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
   }
 }
 
-# 2. ECS Task Execution Role (Pulling images from ECR, sending logs to CloudWatch, reading secrets)
+# 2. ECS Task Execution Role (Checklist #17)
 resource "aws_iam_role" "ecs_execution_role" {
   name               = "${var.project_name}-ecs-execution-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
+# Standard Managed Policy Attachment for Task Execution
 resource "aws_iam_role_policy_attachment" "ecs_execution_standard" {
   role       = aws_iam_role.ecs_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Scoped Policy for Execution Role to read Secrets and SSM Parameters
+# Custom Scoped Policy for Execution Role to fetch Secrets and Parameters (Checklist #17)
 resource "aws_iam_policy" "ecs_execution_secrets" {
   name        = "${var.project_name}-ecs-execution-secrets-policy"
   description = "Scoped policy for ECS execution role to fetch secrets and parameters"
@@ -30,23 +31,14 @@ resource "aws_iam_policy" "ecs_execution_secrets" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:GetSecretValue"
-        ]
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
         Resource = [aws_secretsmanager_secret.db_credentials.arn]
       },
       {
-        Effect = "Allow"
-        Action = [
-          "ssm:GetParameters",
-          "ssm:GetParameter"
-        ]
-        Resource = [
-          aws_ssm_parameter.db_host.arn,
-          aws_ssm_parameter.db_name.arn,
-          aws_ssm_parameter.s3_bucket.arn
-        ]
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameters", "ssm:GetParameter"]
+        Resource = ["arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${lower(var.project_name)}/*"]
       }
     ]
   })
@@ -57,13 +49,13 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_secrets_attach" {
   policy_arn = aws_iam_policy.ecs_execution_secrets.arn
 }
 
-# 3. ECS Task Role (Runtime permissions for application container - S3 operations)
+# 3. ECS Task Role for Application Container Runtime (Checklist #18)
 resource "aws_iam_role" "ecs_task_role" {
   name               = "${var.project_name}-ecs-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
 }
 
-# Scoped Policy for Task Role to interact with S3 Attachments bucket
+# Custom Scoped Policy for Task Role S3 access (Checklist #18)
 resource "aws_iam_policy" "ecs_task_s3" {
   name        = "${var.project_name}-ecs-task-s3-policy"
   description = "Scoped policy for ECS container application to perform S3 operations"
@@ -74,8 +66,8 @@ resource "aws_iam_policy" "ecs_task_s3" {
       {
         Effect = "Allow"
         Action = [
-          "s3:PutObject",
           "s3:GetObject",
+          "s3:PutObject",
           "s3:DeleteObject",
           "s3:ListBucket"
         ]

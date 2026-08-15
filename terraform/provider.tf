@@ -15,14 +15,6 @@ terraform {
       version = "~> 2.4"
     }
   }
-
-  # S3 Remote backend configuration can be enabled here:
-  # backend "s3" {
-  #   bucket         = "ticketdesk-tfstate-bucket"
-  #   key            = "prod/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "ticketdesk-tf-locks"
-  # }
 }
 
 provider "aws" {
@@ -39,4 +31,3 @@ provider "aws" {
 }
 
 data "aws_caller_identity" "current" {}
-

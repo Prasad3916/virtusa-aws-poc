@@ -2,7 +2,7 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# 1. Main VPC
+# 1. Main VPC (Checklist #6)
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -13,7 +13,7 @@ resource "aws_vpc" "main" {
   }
 }
 
-# 2. Public Subnets (AZ 1 and AZ 2)
+# 2. Public Subnets across 2 AZs (Checklist #7)
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
@@ -26,7 +26,7 @@ resource "aws_subnet" "public" {
   }
 }
 
-# 3. Private Subnets (AZ 1 and AZ 2)
+# 3. Private Subnets across 2 AZs (Checklist #8)
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
@@ -38,7 +38,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-# 4. Internet Gateway
+# 4. Internet Gateway (Checklist #9)
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -47,7 +47,7 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
-# 5. Elastic IP for NAT Gateway
+# 5. Elastic IP for NAT Gateway (Checklist #9)
 resource "aws_eip" "nat" {
   domain     = "vpc"
   depends_on = [aws_internet_gateway.igw]
@@ -57,7 +57,7 @@ resource "aws_eip" "nat" {
   }
 }
 
-# 6. NAT Gateway (in Public Subnet 1)
+# 6. NAT Gateway in Public Subnet 1 (Checklist #9)
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id

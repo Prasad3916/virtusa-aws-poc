@@ -1,4 +1,4 @@
-# 1. Application Load Balancer
+# 1. Application Load Balancer (Checklist #13)
 resource "aws_lb" "main" {
   name               = "${lower(var.project_name)}-alb"
   internal           = false
@@ -13,7 +13,7 @@ resource "aws_lb" "main" {
   }
 }
 
-# 2. ALB Target Group for ECS API
+# 2. ALB Target Group for ECS API (Checklist #14)
 resource "aws_lb_target_group" "api" {
   name        = "${lower(var.project_name)}-tg"
   port        = var.app_port
@@ -42,8 +42,7 @@ resource "aws_lb_target_group" "api" {
   }
 }
 
-
-# 3. HTTP Listener
+# 3. HTTP Listener (Checklist #14)
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80

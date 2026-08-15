@@ -1,4 +1,4 @@
-# 1. CloudWatch Log Group with 14-day retention (Checklist #28)
+# 1. CloudWatch Log Group for ECS Fargate Containers (14-day retention) (Checklist #28)
 resource "aws_cloudwatch_log_group" "ecs_logs" {
   name              = "/ecs/${var.project_name}-logs"
   retention_in_days = 14
@@ -8,13 +8,9 @@ resource "aws_cloudwatch_log_group" "ecs_logs" {
   }
 }
 
-# 2. SNS Topic for Alarm Notifications (Checklist #30)
+# 2. SNS Topic & Email Subscription for Alarms (Checklist #29)
 resource "aws_sns_topic" "alarms" {
   name = "${var.project_name}-alarms-topic"
-
-  tags = {
-    Name = "${var.project_name}-alarms-topic"
-  }
 }
 
 resource "aws_sns_topic_subscription" "alarm_email" {
@@ -23,7 +19,7 @@ resource "aws_sns_topic_subscription" "alarm_email" {
   endpoint  = var.alarm_email
 }
 
-# 3. Alarm 1: ALB 5xx HTTP Errors (Checklist #30)
+# 3. Alarm 1 — ALB 5xx Errors > 5 in 1 minute (Checklist #29)
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   alarm_name          = "${var.project_name}-ALB-5xx-Errors"
   comparison_operator = "GreaterThanThreshold"
@@ -41,7 +37,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   }
 }
 
-# 4. Alarm 2: Unhealthy Target Count (Checklist #30)
+# 4. Alarm 2 — ECS Task Unhealthy Count >= 1 (Checklist #29)
 resource "aws_cloudwatch_metric_alarm" "unhealthy_targets" {
   alarm_name          = "${var.project_name}-Unhealthy-Targets"
   comparison_operator = "GreaterThanOrEqualToThreshold"
@@ -55,12 +51,12 @@ resource "aws_cloudwatch_metric_alarm" "unhealthy_targets" {
   alarm_actions       = [aws_sns_topic.alarms.arn]
 
   dimensions = {
-    TargetGroup  = aws_lb_target_group.api.arn_suffix
     LoadBalancer = aws_lb.main.arn_suffix
+    TargetGroup  = aws_lb_target_group.api.arn_suffix
   }
 }
 
-# 5. Alarm 3: RDS High Database CPU Utilization (Checklist #30)
+# 5. Alarm 3 — RDS High CPU Utilization > 80% for 4 minutes (Checklist #29)
 resource "aws_cloudwatch_metric_alarm" "rds_high_cpu" {
   alarm_name          = "${var.project_name}-RDS-High-CPU"
   comparison_operator = "GreaterThanThreshold"
@@ -78,7 +74,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_high_cpu" {
   }
 }
 
-# 6. CloudWatch Operational Dashboard (Checklist #29)
+# 6. CloudWatch Metric Dashboard (Checklist #30)
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${var.project_name}-Dashboard"
 

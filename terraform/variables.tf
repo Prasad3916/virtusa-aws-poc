@@ -72,7 +72,6 @@ variable "alarm_email" {
 
 variable "enable_cloudfront" {
   type        = bool
-  description = "Enable CloudFront CDN distribution (requires verified AWS account)"
+  description = "Enable CloudFront CDN distribution"
   default     = false
 }
-
