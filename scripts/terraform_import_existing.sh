@@ -9,12 +9,50 @@ echo "Initializing Terraform providers..."
 rm -f .terraform.lock.hcl
 terraform init -upgrade
 
-# 1. ECR Repository
+# 0. Detect and import existing VPC, Subnets, and Security Groups to eliminate cross-VPC conflicts
+ALB_VPC_ID=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
+if [ -z "$ALB_VPC_ID" ] || [ "$ALB_VPC_ID" = "None" ]; then
+  ALB_VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+fi
 
+if [ -n "$ALB_VPC_ID" ] && [ "$ALB_VPC_ID" != "None" ]; then
+  echo "Importing existing VPC ($ALB_VPC_ID)..."
+  terraform import aws_vpc.main "$ALB_VPC_ID" || true
+
+  ALB_SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=group-name,Values=TicketDesk-alb-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
+  if [ -n "$ALB_SG" ] && [ "$ALB_SG" != "None" ]; then
+    terraform import aws_security_group.alb "$ALB_SG" || true
+  fi
+
+  ECS_SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=group-name,Values=TicketDesk-ecs-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
+  if [ -n "$ECS_SG" ] && [ "$ECS_SG" != "None" ]; then
+    terraform import aws_security_group.ecs_task "$ECS_SG" || true
+  fi
+
+  RDS_SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=group-name,Values=TicketDesk-rds-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
+  if [ -n "$RDS_SG" ] && [ "$RDS_SG" != "None" ]; then
+    terraform import aws_security_group.rds "$RDS_SG" || true
+  fi
+
+  PUB_SUBNETS=($(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=tag:Name,Values=*public*" --region us-east-1 --query "Subnets[].SubnetId" --output text 2>/dev/null || echo ""))
+  if [ ${#PUB_SUBNETS[@]} -ge 2 ]; then
+    terraform import "aws_subnet.public[0]" "${PUB_SUBNETS[0]}" || true
+    terraform import "aws_subnet.public[1]" "${PUB_SUBNETS[1]}" || true
+  fi
+
+  PRIV_SUBNETS=($(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=tag:Name,Values=*private*" --region us-east-1 --query "Subnets[].SubnetId" --output text 2>/dev/null || echo ""))
+  if [ ${#PRIV_SUBNETS[@]} -ge 2 ]; then
+    terraform import "aws_subnet.private[0]" "${PRIV_SUBNETS[0]}" || true
+    terraform import "aws_subnet.private[1]" "${PRIV_SUBNETS[1]}" || true
+  fi
+fi
+
+# 1. ECR Repository
 if aws ecr describe-repositories --repository-names ticketdesk-api --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing ECR repository ticketdesk-api..."
   terraform import aws_ecr_repository.api ticketdesk-api || true
 fi
+
 
 # 2. CloudWatch Log Group
 if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region us-east-1 | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then
