@@ -32,6 +32,7 @@ resource "aws_ssm_parameter" "db_host" {
   description = "Database Host endpoint"
   type        = "String"
   value       = aws_db_instance.main.address
+  overwrite   = true
 }
 
 # 5. SSM Parameter Store - Database Name
@@ -40,6 +41,7 @@ resource "aws_ssm_parameter" "db_name" {
   description = "Database Name"
   type        = "String"
   value       = var.db_name
+  overwrite   = true
 }
 
 # 6. SSM Parameter Store - S3 Attachments Bucket
@@ -48,4 +50,5 @@ resource "aws_ssm_parameter" "s3_bucket" {
   description = "S3 Attachments Bucket Name"
   type        = "String"
   value       = aws_s3_bucket.attachments.id
+  overwrite   = true
 }

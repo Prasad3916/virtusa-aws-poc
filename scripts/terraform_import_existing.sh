@@ -46,7 +46,21 @@ if aws secretsmanager describe-secret --secret-id "TicketDesk-db-credentials" --
   terraform import aws_secretsmanager_secret.db_credentials "TicketDesk-db-credentials" || true
 fi
 
+# 0. Clean up detached Internet Gateways to prevent InternetGatewayLimitExceeded
+echo "Checking and cleaning detached Internet Gateways..."
+DETACHED_IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.state,Values=detached" --region us-east-1 --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
+for igw in $DETACHED_IGWS; do
+  if [ -n "$igw" ] && [ "$igw" != "None" ]; then
+    echo "Deleting detached Internet Gateway: $igw"
+    aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region us-east-1 >/dev/null 2>&1 || true
+  fi
+done
+
 # 6. SSM Parameters
+if aws ssm get-parameter --name "/ticketdesk/DB_HOST" --region us-east-1 >/dev/null 2>&1; then
+  terraform import aws_ssm_parameter.db_host "/ticketdesk/DB_HOST" || true
+fi
+
 if aws ssm get-parameter --name "/ticketdesk/DB_NAME" --region us-east-1 >/dev/null 2>&1; then
   terraform import aws_ssm_parameter.db_name "/ticketdesk/DB_NAME" || true
 fi
@@ -54,6 +68,7 @@ fi
 if aws ssm get-parameter --name "/ticketdesk/S3_BUCKET" --region us-east-1 >/dev/null 2>&1; then
   terraform import aws_ssm_parameter.s3_bucket "/ticketdesk/S3_BUCKET" || true
 fi
+
 
 # 7. SNS Topic
 if [ -n "$ACCOUNT_ID" ]; then
