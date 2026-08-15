@@ -196,11 +196,17 @@ if aws rds describe-db-instances --db-instance-identifier "ticketdesk-mysql-db" 
   terraform import aws_db_instance.main "ticketdesk-mysql-db" || true
 fi
 
-# 6. ECS & ECR
+# 6. ECS Cluster, Service & ECR
 if aws ecs describe-clusters --clusters "TicketDesk-cluster" --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing ECS Cluster TicketDesk-cluster..."
   terraform import aws_ecs_cluster.main "TicketDesk-cluster" || true
+
+  if aws ecs describe-services --cluster "TicketDesk-cluster" --services "TicketDesk-service" --region us-east-1 | grep "TicketDesk-service" >/dev/null 2>&1; then
+    echo "Importing existing ECS Service TicketDesk-service..."
+    terraform import aws_ecs_service.api "TicketDesk-cluster/TicketDesk-service" || true
+  fi
 fi
+
 
 if aws ecr describe-repositories --repository-names ticketdesk-api --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing ECR repository ticketdesk-api..."
