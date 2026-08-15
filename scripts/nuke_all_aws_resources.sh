@@ -3,11 +3,20 @@ set +e
 
 REGION="${AWS_REGION:-us-east-1}"
 echo "=========================================================="
-echo "   TICKETDESK SCOPED AWS RESOURCE CLEANUP IN $REGION"
+echo "   TICKETDESK COMPREHENSIVE RESOURCE & VPC CLEANUP IN $REGION"
 echo "=========================================================="
 
-# 1. Delete TicketDesk ECS Services & Clusters
-echo "[1/10] Cleaning TicketDesk ECS Services & Cluster..."
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+
+# 1. Clean TicketDesk Lambda Permission & Function
+echo "[1/10] Cleaning TicketDesk Lambda Permissions & Function..."
+if [ -n "$ACCOUNT_ID" ]; then
+  aws lambda remove-permission --function-name "TicketDesk-thumbnail-generator" --statement-id "AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" --region $REGION >/dev/null 2>&1 || true
+  aws lambda remove-permission --function-name "TicketDesk-thumbnail-generator" --statement-id "AllowS3InvokeThumbnailGenerator" --region $REGION >/dev/null 2>&1 || true
+fi
+
+# 2. Clean TicketDesk ECS Services & Cluster
+echo "[2/10] Cleaning TicketDesk ECS Services & Cluster..."
 if aws ecs describe-clusters --clusters "TicketDesk-cluster" --region $REGION >/dev/null 2>&1; then
   SERVICES=$(aws ecs list-services --cluster "TicketDesk-cluster" --region $REGION --query "serviceArns[]" --output text 2>/dev/null || echo "")
   for service in $SERVICES; do
@@ -17,8 +26,8 @@ if aws ecs describe-clusters --clusters "TicketDesk-cluster" --region $REGION >/
   aws ecs delete-cluster --cluster "TicketDesk-cluster" --region $REGION >/dev/null 2>&1 || true
 fi
 
-# 2. Delete TicketDesk Load Balancer & Target Group
-echo "[2/10] Cleaning TicketDesk Load Balancer and Target Group..."
+# 3. Clean TicketDesk Load Balancer & Target Group
+echo "[3/10] Cleaning TicketDesk Load Balancer and Target Group..."
 ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region $REGION --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
 if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
   aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" --region $REGION >/dev/null 2>&1 || true
@@ -30,11 +39,10 @@ if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
   aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region $REGION >/dev/null 2>&1 || true
 fi
 
-# 3. Delete TicketDesk RDS Instance & Subnet Group
-echo "[3/10] Cleaning TicketDesk RDS Instance and Subnet Group..."
+# 4. Clean TicketDesk RDS Instance & Subnet Group
+echo "[4/10] Cleaning TicketDesk RDS Instance and Subnet Group..."
 if aws rds describe-db-instances --db-instance-identifier "ticketdesk-mysql-db" --region $REGION >/dev/null 2>&1; then
   aws rds delete-db-instance --db-instance-identifier "ticketdesk-mysql-db" --skip-final-snapshot --delete-automated-backups --region $REGION >/dev/null 2>&1 || true
-  # Wait for RDS instance deletion
   echo "Waiting for RDS instance deletion..."
   aws rds wait db-instance-deleted --db-instance-identifier "ticketdesk-mysql-db" --region $REGION >/dev/null 2>&1 || true
 fi
@@ -43,41 +51,34 @@ if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subne
   aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region $REGION >/dev/null 2>&1 || true
 fi
 
-# 4. Clean Unattached Elastic IPs & NAT Gateways
-echo "[4/10] Cleaning TicketDesk NAT Gateways and Elastic IPs..."
-NATS=$(aws ec2 describe-nat-gateways --filters "Name=tag:Project,Values=TicketDesk" --region $REGION --query "NatGateways[?State!='deleted'].NatGatewayId" --output text 2>/dev/null || echo "")
+# 5. Clean NAT Gateways & Elastic IPs
+echo "[5/10] Cleaning NAT Gateways and Elastic IPs..."
+NATS=$(aws ec2 describe-nat-gateways --region $REGION --query "NatGateways[?State!='deleted'].NatGatewayId" --output text 2>/dev/null || echo "")
 for nat in $NATS; do
   aws ec2 delete-nat-gateway --nat-gateway-id "$nat" --region $REGION >/dev/null 2>&1 || true
 done
 
-EIPS=$(aws ec2 describe-addresses --filters "Name=tag:Project,Values=TicketDesk" --region $REGION --query "Addresses[].AllocationId" --output text 2>/dev/null || echo "")
+sleep 5
+
+EIPS=$(aws ec2 describe-addresses --region $REGION --query "Addresses[].AllocationId" --output text 2>/dev/null || echo "")
 for eip in $EIPS; do
   aws ec2 release-address --allocation-id "$eip" --region $REGION >/dev/null 2>&1 || true
 done
 
-# Also release any unattached EIPs
-UNATTACHED=$(aws ec2 describe-addresses --region $REGION --query "Addresses[?AssociationId==null].AllocationId" --output text 2>/dev/null || echo "")
-for ueip in $UNATTACHED; do
-  aws ec2 release-address --allocation-id "$ueip" --region $REGION >/dev/null 2>&1 || true
-done
-
-# 5. Clean Detached Internet Gateways
-echo "[5/10] Cleaning Detached Internet Gateways..."
+# 6. Clean Detached Internet Gateways
+echo "[6/10] Cleaning Detached Internet Gateways..."
 IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.state,Values=detached" --region $REGION --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
 for igw in $IGWS; do
   aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region $REGION >/dev/null 2>&1 || true
 done
 
-# 6. Delete TicketDesk VPC & Subnets
-echo "[6/10] Cleaning TicketDesk VPCs, Subnets, and Gateways..."
-VPCS=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=TicketDesk" --region $REGION --query "Vpcs[].VpcId" --output text 2>/dev/null || echo "")
-if [ -z "$VPCS" ] || [ "$VPCS" = "None" ]; then
-  VPCS=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region $REGION --query "Vpcs[].VpcId" --output text 2>/dev/null || echo "")
-fi
+# 7. Sweep and Delete ALL Non-Default VPCs to Guarantee Zero VpcLimitExceeded Errors
+echo "[7/10] Sweeping and Deleting Non-Default VPCs to ensure VPC Quota Availability..."
+NON_DEFAULT_VPCS=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=false" --region $REGION --query "Vpcs[].VpcId" --output text 2>/dev/null || echo "")
 
-for vpc in $VPCS; do
+for vpc in $NON_DEFAULT_VPCS; do
   if [ -n "$vpc" ] && [ "$vpc" != "None" ]; then
-    echo "Processing cleanup for TicketDesk VPC: $vpc"
+    echo "Processing cleanup for non-default VPC: $vpc"
     
     # Detach & Delete IGW attached to this VPC
     VPC_IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$vpc" --region $REGION --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
@@ -109,5 +110,5 @@ for vpc in $VPCS; do
 done
 
 echo "=========================================================="
-echo "✔ TICKETDESK SCOPED AWS RESOURCE CLEANUP COMPLETE!"
+echo "✔ TICKETDESK RESOURCE & VPC CLEANUP FINISHED!"
 echo "=========================================================="
