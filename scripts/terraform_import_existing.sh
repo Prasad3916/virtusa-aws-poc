@@ -154,9 +154,13 @@ fi
 
 TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
 if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
-  if aws elbv2 describe-target-groups --target-group-arns "$TG_ARN" --region us-east-1 >/dev/null 2>&1; then
+  TG_VPC=$(aws elbv2 describe-target-groups --target-group-arns "$TG_ARN" --region us-east-1 --query "TargetGroups[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -n "$VPC_ID" ] && [ "$TG_VPC" = "$VPC_ID" ]; then
     echo "Importing existing Target Group ticketdesk-tg ($TG_ARN)..."
     terraform import aws_lb_target_group.api "$TG_ARN" || true
+  else
+    echo "Stale Target Group ticketdesk-tg found in VPC $TG_VPC (Current VPC: $VPC_ID). Deleting stale target group..."
+    aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region us-east-1 >/dev/null 2>&1 || true
   fi
 fi
 
@@ -169,9 +173,23 @@ fi
 
 # 5. Database Resources
 if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
-  echo "Importing existing DB Subnet Group ticketdesk-db-subnet-group..."
-  terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+  SGRP_VPC=$(aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 --query "DBSubnetGroups[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -n "$VPC_ID" ] && [ "$SGRP_VPC" = "$VPC_ID" ]; then
+    echo "Importing existing DB Subnet Group ticketdesk-db-subnet-group in VPC $VPC_ID..."
+    terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+  else
+    echo "Stale DB Subnet Group ticketdesk-db-subnet-group found in VPC $SGRP_VPC (Current VPC: $VPC_ID). Reconciling stale DB subnet group..."
+    RDS_USING=$(aws rds describe-db-instances --region us-east-1 --query "DBInstances[?DBSubnetGroup.DBSubnetGroupName=='ticketdesk-db-subnet-group'].DBInstanceIdentifier" --output text 2>/dev/null || echo "")
+    if [ -n "$RDS_USING" ] && [ "$RDS_USING" != "None" ]; then
+      echo "Deleting stale RDS instance $RDS_USING in old VPC..."
+      aws rds delete-db-instance --db-instance-identifier "$RDS_USING" --skip-final-snapshot --region us-east-1 >/dev/null 2>&1 || true
+      aws rds wait db-instance-deleted --db-instance-identifier "$RDS_USING" --region us-east-1 >/dev/null 2>&1 || true
+    fi
+    echo "Deleting stale DB Subnet group ticketdesk-db-subnet-group in old VPC..."
+    aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1 || true
+  fi
 fi
+
 
 if aws rds describe-db-instances --db-instance-identifier "ticketdesk-mysql-db" --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing RDS Instance ticketdesk-mysql-db..."
