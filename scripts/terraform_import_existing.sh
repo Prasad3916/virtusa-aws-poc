@@ -124,12 +124,8 @@ if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
     terraform import aws_lb_listener.http "$LISTENER_ARN" || true
   fi
 fi
+# Target group ticketdesk-tg was manually deleted in AWS by user; Terraform will create aws_lb_target_group.api cleanly.
 
-TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
-if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
-  echo "Importing existing Target Group ticketdesk-tg..."
-  terraform import aws_lb_target_group.api "$TG_ARN" || true
-fi
 
 # 4. CloudWatch Log Group
 if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region us-east-1 | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then

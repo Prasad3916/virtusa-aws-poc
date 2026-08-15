@@ -75,12 +75,13 @@ jobs:
         with:
           terraform_version: 1.9.5
 
-      - name: Initialize & Apply Terraform (Clean Scratch Deployment)
+      - name: Reconcile State & Apply Terraform
         run: |
+          chmod +x ./scripts/terraform_import_existing.sh
+          ./scripts/terraform_import_existing.sh
           cd terraform
-          rm -f .terraform.lock.hcl
-          terraform init -upgrade
           terraform apply -auto-approve
+
 
 
 
