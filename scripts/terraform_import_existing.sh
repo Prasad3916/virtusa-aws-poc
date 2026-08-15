@@ -1,5 +1,9 @@
 #!/bin/bash
-set -e
+set +e
+
+echo "Executing pre-deployment TicketDesk AWS resource cleanup..."
+chmod +x ./scripts/nuke_all_aws_resources.sh
+./scripts/nuke_all_aws_resources.sh || true
 
 echo "Checking and importing pre-existing global AWS resources into Terraform state..."
 
@@ -46,16 +50,6 @@ if aws secretsmanager describe-secret --secret-id "TicketDesk-db-credentials" --
   terraform import aws_secretsmanager_secret.db_credentials "TicketDesk-db-credentials" || true
 fi
 
-# 0. Clean up detached Internet Gateways to prevent InternetGatewayLimitExceeded
-echo "Checking and cleaning detached Internet Gateways..."
-DETACHED_IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.state,Values=detached" --region us-east-1 --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
-for igw in $DETACHED_IGWS; do
-  if [ -n "$igw" ] && [ "$igw" != "None" ]; then
-    echo "Deleting detached Internet Gateway: $igw"
-    aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region us-east-1 >/dev/null 2>&1 || true
-  fi
-done
-
 # 6. SSM Parameters
 if aws ssm get-parameter --name "/ticketdesk/DB_HOST" --region us-east-1 >/dev/null 2>&1; then
   terraform import aws_ssm_parameter.db_host "/ticketdesk/DB_HOST" || true
@@ -68,7 +62,6 @@ fi
 if aws ssm get-parameter --name "/ticketdesk/S3_BUCKET" --region us-east-1 >/dev/null 2>&1; then
   terraform import aws_ssm_parameter.s3_bucket "/ticketdesk/S3_BUCKET" || true
 fi
-
 
 # 7. SNS Topic
 if [ -n "$ACCOUNT_ID" ]; then
@@ -91,53 +84,4 @@ if [ -n "$ACCOUNT_ID" ]; then
   fi
 fi
 
-# 10. Target Group Validation & Import
-TG_VPC=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].VpcId" --output text 2>/dev/null || echo "")
-if [ -n "$TG_VPC" ] && [ "$TG_VPC" != "None" ]; then
-  VPC_EXISTS=$(aws ec2 describe-vpcs --vpc-ids "$TG_VPC" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
-  if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" = "None" ]; then
-    echo "Cleaning broken Target Group referencing deleted VPC ($TG_VPC)..."
-    TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
-    aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region us-east-1 >/dev/null 2>&1 || true
-  else
-    TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
-    terraform import aws_lb_target_group.api "$TG_ARN" || true
-  fi
-fi
-
-# 11. DB Subnet Group Validation & Import
-if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
-  DB_VPC=$(aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 --query "DBSubnetGroups[0].VpcId" --output text 2>/dev/null || echo "")
-  VPC_EXISTS=$(aws ec2 describe-vpcs --vpc-ids "$DB_VPC" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
-  if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" = "None" ]; then
-    echo "Cleaning broken DB Subnet Group referencing deleted VPC ($DB_VPC)..."
-    aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1 || true
-  else
-    terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
-  fi
-fi
-
-# 12. Lambda Permission
-if [ -n "$ACCOUNT_ID" ]; then
-  echo "Importing existing Lambda Permission..."
-  terraform import aws_lambda_permission.allow_s3_invoke "TicketDesk-thumbnail-generator/AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" || true
-fi
-
-# 13. Load Balancer Validation & Import
-ALB_VPC=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
-if [ -n "$ALB_VPC" ] && [ "$ALB_VPC" != "None" ]; then
-  VPC_EXISTS=$(aws ec2 describe-vpcs --vpc-ids "$ALB_VPC" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
-  if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" = "None" ]; then
-    echo "Cleaning broken Load Balancer referencing deleted VPC ($ALB_VPC)..."
-    ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
-    aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" --region us-east-1 >/dev/null 2>&1 || true
-    sleep 5
-  else
-    ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
-    terraform import aws_lb.main "$ALB_ARN" || true
-  fi
-fi
-
-
-echo "Import check complete. Proceeding with clean deployment..."
-
+echo "Pre-deployment cleanup and import complete. Proceeding with fresh terraform apply..."
