@@ -53,22 +53,25 @@ resource "aws_ecs_task_definition" "api" {
       environment = [
         { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
         { name = "SERVER_PORT", value = tostring(var.app_port) },
-        { name = "DB_HOST", value = aws_db_instance.main.address },
-        { name = "DB_NAME", value = var.db_name },
+        { name = "SPRING_DATASOURCE_URL", value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.db_name}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" },
+        { name = "EUREKA_CLIENT_ENABLED", value = "false" },
+        { name = "EUREKA_CLIENT_REGISTER_WITH_EUREKA", value = "false" },
+        { name = "EUREKA_CLIENT_FETCH_REGISTRY", value = "false" },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.attachments.id },
         { name = "AWS_REGION", value = var.aws_region }
       ]
 
       secrets = [
         {
-          name      = "DB_PASSWORD"
+          name      = "SPRING_DATASOURCE_PASSWORD"
           valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:password::"
         },
         {
-          name      = "DB_USERNAME"
+          name      = "SPRING_DATASOURCE_USERNAME"
           valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:username::"
         }
       ]
+
 
       logConfiguration = {
         logDriver = "awslogs"

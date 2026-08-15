@@ -61,8 +61,9 @@ variable "db_username" {
 variable "app_port" {
   type        = number
   description = "Port exposed by the ECS application container"
-  default     = 8080
+  default     = 8082
 }
+
 
 variable "alarm_email" {
   type        = string
