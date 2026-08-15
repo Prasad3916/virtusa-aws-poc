@@ -14,118 +14,143 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/nu
 # 0. Discover Authoritative VPC ID containing RDS (Preserving existing RDS database)
 RDS_VPC_ID=$(aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 --query "DBSubnetGroups[0].VpcId" --output text 2>/dev/null || echo "")
 if [ -n "$RDS_VPC_ID" ] && [ "$RDS_VPC_ID" != "None" ]; then
-  VPC_ID="$RDS_VPC_ID"
-  echo "Found Authoritative RDS VPC: $VPC_ID"
-else
-  VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=TicketDesk" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
-  if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
-    VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+  if aws ec2 describe-vpcs --vpc-ids "$RDS_VPC_ID" --region us-east-1 >/dev/null 2>&1; then
+    VPC_ID="$RDS_VPC_ID"
+    echo "Found Authoritative RDS VPC: $VPC_ID"
+  fi
+fi
+
+if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+  CANDIDATE_VPC=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=TicketDesk" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -n "$CANDIDATE_VPC" ] && [ "$CANDIDATE_VPC" != "None" ]; then
+    if aws ec2 describe-vpcs --vpc-ids "$CANDIDATE_VPC" --region us-east-1 >/dev/null 2>&1; then
+      VPC_ID="$CANDIDATE_VPC"
+    fi
+  fi
+fi
+
+if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+  CANDIDATE_VPC=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -n "$CANDIDATE_VPC" ] && [ "$CANDIDATE_VPC" != "None" ]; then
+    if aws ec2 describe-vpcs --vpc-ids "$CANDIDATE_VPC" --region us-east-1 >/dev/null 2>&1; then
+      VPC_ID="$CANDIDATE_VPC"
+    fi
   fi
 fi
 
 # 1. VPC & Networking Resources
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
-  echo "Importing existing TicketDesk VPC ($VPC_ID)..."
-  terraform import aws_vpc.main "$VPC_ID" || true
+  if aws ec2 describe-vpcs --vpc-ids "$VPC_ID" --region us-east-1 >/dev/null 2>&1; then
+    echo "Importing verified existing TicketDesk VPC ($VPC_ID)..."
+    terraform import aws_vpc.main "$VPC_ID" || true
 
-  # Import Subnets within this Authoritative VPC
-  SUB_PUB_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-  if [ -z "$SUB_PUB_1" ] || [ "$SUB_PUB_1" = "None" ]; then
-    SUB_PUB_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-  fi
-  if [ -n "$SUB_PUB_1" ] && [ "$SUB_PUB_1" != "None" ]; then
-    terraform import 'aws_subnet.public[0]' "$SUB_PUB_1" || true
-  fi
-
-  SUB_PUB_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-  if [ -z "$SUB_PUB_2" ] || [ "$SUB_PUB_2" = "None" ]; then
-    SUB_PUB_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "Subnets[1].SubnetId" --output text 2>/dev/null || echo "")
-  fi
-  if [ -n "$SUB_PUB_2" ] && [ "$SUB_PUB_2" != "None" ]; then
-    terraform import 'aws_subnet.public[1]' "$SUB_PUB_2" || true
-  fi
-
-  SUB_PRIV_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-  if [ -z "$SUB_PRIV_1" ] || [ "$SUB_PRIV_1" = "None" ]; then
-    SUB_PRIV_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "Subnets[2].SubnetId" --output text 2>/dev/null || echo "")
-  fi
-  if [ -n "$SUB_PRIV_1" ] && [ "$SUB_PRIV_1" != "None" ]; then
-    terraform import 'aws_subnet.private[0]' "$SUB_PRIV_1" || true
-  fi
-
-  SUB_PRIV_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-  if [ -z "$SUB_PRIV_2" ] || [ "$SUB_PRIV_2" = "None" ]; then
-    SUB_PRIV_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "Subnets[3].SubnetId" --output text 2>/dev/null || echo "")
-  fi
-  if [ -n "$SUB_PRIV_2" ] && [ "$SUB_PRIV_2" != "None" ]; then
-    terraform import 'aws_subnet.private[1]' "$SUB_PRIV_2" || true
-  fi
-
-  # Import Route Tables & Associations
-  RT_PUB=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-rt" --region us-east-1 --query "RouteTables[0].RouteTableId" --output text 2>/dev/null || echo "")
-  if [ -n "$RT_PUB" ] && [ "$RT_PUB" != "None" ]; then
-    terraform import aws_route_table.public "$RT_PUB" || true
+    # Import Subnets within this Authoritative VPC
+    SUB_PUB_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
     if [ -n "$SUB_PUB_1" ] && [ "$SUB_PUB_1" != "None" ]; then
-      terraform import 'aws_route_table_association.public[0]' "$SUB_PUB_1/$RT_PUB" || true
+      if aws ec2 describe-subnets --subnet-ids "$SUB_PUB_1" --region us-east-1 >/dev/null 2>&1; then
+        terraform import 'aws_subnet.public[0]' "$SUB_PUB_1" || true
+      fi
     fi
+
+    SUB_PUB_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
     if [ -n "$SUB_PUB_2" ] && [ "$SUB_PUB_2" != "None" ]; then
-      terraform import 'aws_route_table_association.public[1]' "$SUB_PUB_2/$RT_PUB" || true
+      if aws ec2 describe-subnets --subnet-ids "$SUB_PUB_2" --region us-east-1 >/dev/null 2>&1; then
+        terraform import 'aws_subnet.public[1]' "$SUB_PUB_2" || true
+      fi
     fi
-  fi
 
-  RT_PRIV=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-rt" --region us-east-1 --query "RouteTables[0].RouteTableId" --output text 2>/dev/null || echo "")
-  if [ -n "$RT_PRIV" ] && [ "$RT_PRIV" != "None" ]; then
-    terraform import aws_route_table.private "$RT_PRIV" || true
+    SUB_PRIV_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
     if [ -n "$SUB_PRIV_1" ] && [ "$SUB_PRIV_1" != "None" ]; then
-      terraform import 'aws_route_table_association.private[0]' "$SUB_PRIV_1/$RT_PRIV" || true
+      if aws ec2 describe-subnets --subnet-ids "$SUB_PRIV_1" --region us-east-1 >/dev/null 2>&1; then
+        terraform import 'aws_subnet.private[0]' "$SUB_PRIV_1" || true
+      fi
     fi
-    if [ -n "$SUB_PRIV_2" ] && [ "$SUB_PRIV_2" != "None" ]; then
-      terraform import 'aws_route_table_association.private[1]' "$SUB_PRIV_2/$RT_PRIV" || true
-    fi
-  fi
 
-  # Import NAT Gateway
-  NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" --region us-east-1 --query "NatGateways[0].NatGatewayId" --output text 2>/dev/null || echo "")
-  if [ -n "$NAT_ID" ] && [ "$NAT_ID" != "None" ]; then
-    terraform import aws_nat_gateway.nat "$NAT_ID" || true
+    SUB_PRIV_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
+    if [ -n "$SUB_PRIV_2" ] && [ "$SUB_PRIV_2" != "None" ]; then
+      if aws ec2 describe-subnets --subnet-ids "$SUB_PRIV_2" --region us-east-1 >/dev/null 2>&1; then
+        terraform import 'aws_subnet.private[1]' "$SUB_PRIV_2" || true
+      fi
+    fi
+
+    # Import Route Tables & Associations
+    RT_PUB=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-rt" --region us-east-1 --query "RouteTables[0].RouteTableId" --output text 2>/dev/null || echo "")
+    if [ -n "$RT_PUB" ] && [ "$RT_PUB" != "None" ]; then
+      if aws ec2 describe-route-tables --route-table-ids "$RT_PUB" --region us-east-1 >/dev/null 2>&1; then
+        terraform import aws_route_table.public "$RT_PUB" || true
+        if [ -n "$SUB_PUB_1" ] && [ "$SUB_PUB_1" != "None" ]; then
+          terraform import 'aws_route_table_association.public[0]' "$SUB_PUB_1/$RT_PUB" || true
+        fi
+        if [ -n "$SUB_PUB_2" ] && [ "$SUB_PUB_2" != "None" ]; then
+          terraform import 'aws_route_table_association.public[1]' "$SUB_PUB_2/$RT_PUB" || true
+        fi
+      fi
+    fi
+
+    RT_PRIV=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-rt" --region us-east-1 --query "RouteTables[0].RouteTableId" --output text 2>/dev/null || echo "")
+    if [ -n "$RT_PRIV" ] && [ "$RT_PRIV" != "None" ]; then
+      if aws ec2 describe-route-tables --route-table-ids "$RT_PRIV" --region us-east-1 >/dev/null 2>&1; then
+        terraform import aws_route_table.private "$RT_PRIV" || true
+        if [ -n "$SUB_PRIV_1" ] && [ "$SUB_PRIV_1" != "None" ]; then
+          terraform import 'aws_route_table_association.private[0]' "$SUB_PRIV_1/$RT_PRIV" || true
+        fi
+        if [ -n "$SUB_PRIV_2" ] && [ "$SUB_PRIV_2" != "None" ]; then
+          terraform import 'aws_route_table_association.private[1]' "$SUB_PRIV_2/$RT_PRIV" || true
+        fi
+      fi
+    fi
+
+    # Import NAT Gateway
+    NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" --region us-east-1 --query "NatGateways[0].NatGatewayId" --output text 2>/dev/null || echo "")
+    if [ -n "$NAT_ID" ] && [ "$NAT_ID" != "None" ]; then
+      terraform import aws_nat_gateway.nat "$NAT_ID" || true
+    fi
   fi
 fi
 
 IGW_ID=$(aws ec2 describe-internet-gateways --filters "Name=tag:Name,Values=TicketDesk-igw" --region us-east-1 --query "InternetGateways[0].InternetGatewayId" --output text 2>/dev/null || echo "")
 if [ -n "$IGW_ID" ] && [ "$IGW_ID" != "None" ]; then
-  echo "Importing existing Internet Gateway ($IGW_ID)..."
-  terraform import aws_internet_gateway.igw "$IGW_ID" || true
+  if aws ec2 describe-internet-gateways --internet-gateway-ids "$IGW_ID" --region us-east-1 >/dev/null 2>&1; then
+    echo "Importing existing Internet Gateway ($IGW_ID)..."
+    terraform import aws_internet_gateway.igw "$IGW_ID" || true
+  fi
 fi
 
 # 2. Security Groups
 SG_ALB=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=TicketDesk-alb-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
 if [ -n "$SG_ALB" ] && [ "$SG_ALB" != "None" ]; then
-  terraform import aws_security_group.alb "$SG_ALB" || true
+  if aws ec2 describe-security-groups --group-ids "$SG_ALB" --region us-east-1 >/dev/null 2>&1; then
+    terraform import aws_security_group.alb "$SG_ALB" || true
+  fi
 fi
 
 SG_ECS=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=TicketDesk-ecs-task-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
 if [ -n "$SG_ECS" ] && [ "$SG_ECS" != "None" ]; then
-  terraform import aws_security_group.ecs_task "$SG_ECS" || true
+  if aws ec2 describe-security-groups --group-ids "$SG_ECS" --region us-east-1 >/dev/null 2>&1; then
+    terraform import aws_security_group.ecs_task "$SG_ECS" || true
+  fi
 fi
 
 SG_RDS=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=TicketDesk-rds-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
 if [ -n "$SG_RDS" ] && [ "$SG_RDS" != "None" ]; then
-  terraform import aws_security_group.rds "$SG_RDS" || true
-fi
-
-# 3. Load Balancer & Target Group & Listener
-ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
-if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
-  echo "Importing existing Load Balancer ticketdesk-alb..."
-  terraform import aws_lb.main "$ALB_ARN" || true
-
-  LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --region us-east-1 --query "Listeners[0].ListenerArn" --output text 2>/dev/null || echo "")
-  if [ -n "$LISTENER_ARN" ] && [ "$LISTENER_ARN" != "None" ]; then
-    terraform import aws_lb_listener.http "$LISTENER_ARN" || true
+  if aws ec2 describe-security-groups --group-ids "$SG_RDS" --region us-east-1 >/dev/null 2>&1; then
+    terraform import aws_security_group.rds "$SG_RDS" || true
   fi
 fi
-# Target group ticketdesk-tg was manually deleted in AWS by user; Terraform will create aws_lb_target_group.api cleanly.
 
+# 3. Load Balancer & Listener (Target group ticketdesk-tg created fresh)
+ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
+if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+  if aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --region us-east-1 >/dev/null 2>&1; then
+    echo "Importing existing Load Balancer ticketdesk-alb..."
+    terraform import aws_lb.main "$ALB_ARN" || true
+
+    LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --region us-east-1 --query "Listeners[0].ListenerArn" --output text 2>/dev/null || echo "")
+    if [ -n "$LISTENER_ARN" ] && [ "$LISTENER_ARN" != "None" ]; then
+      terraform import aws_lb_listener.http "$LISTENER_ARN" || true
+    fi
+  fi
+fi
 
 # 4. CloudWatch Log Group
 if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region us-east-1 | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then
