@@ -75,12 +75,13 @@ jobs:
         with:
           terraform_version: 1.9.5
 
-      - name: Import Existing Resources & Apply Terraform
+      - name: Initialize & Apply Terraform (Clean Scratch Deployment)
         run: |
-          chmod +x ./scripts/terraform_import_existing.sh
-          ./scripts/terraform_import_existing.sh
           cd terraform
+          rm -f .terraform.lock.hcl
+          terraform init -upgrade
           terraform apply -auto-approve
+
 
 
   # ── Stage 4: Containerize & Push to AWS ECR ────────────────────────────────
