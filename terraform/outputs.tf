@@ -3,6 +3,16 @@ output "cloudfront_domain_name" {
   value       = var.enable_cloudfront ? aws_cloudfront_distribution.cdn[0].domain_name : aws_lb.main.dns_name
 }
 
+output "frontend_url" {
+  description = "Frontend Static Application URL (CloudFront CDN or Direct S3 Website Endpoint)"
+  value       = var.enable_cloudfront ? "https://${aws_cloudfront_distribution.cdn[0].domain_name}" : "http://${aws_s3_bucket_website_configuration.frontend_website[0].website_endpoint}"
+}
+
+output "s3_website_endpoint" {
+  description = "Direct S3 Static Website Hosting Endpoint URL (when CloudFront is disabled)"
+  value       = var.enable_cloudfront ? "" : aws_s3_bucket_website_configuration.frontend_website[0].website_endpoint
+}
+
 
 output "alb_dns_name" {
   description = "Application Load Balancer DNS Name"

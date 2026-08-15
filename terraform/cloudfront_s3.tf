@@ -9,13 +9,27 @@ resource "aws_s3_bucket" "frontend" {
 }
 
 
-# Block all public access (Checklist #22)
+# Block public access for CloudFront; Allow public bucket policy for direct S3 Static Website Hosting
 resource "aws_s3_bucket_public_access_block" "frontend_block" {
   bucket                  = aws_s3_bucket.frontend.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+  block_public_acls       = var.enable_cloudfront ? true : false
+  block_public_policy     = var.enable_cloudfront ? true : false
+  ignore_public_acls      = var.enable_cloudfront ? true : false
+  restrict_public_buckets = var.enable_cloudfront ? true : false
+}
+
+# 1b. S3 Static Website Hosting Configuration (Fallback when CloudFront is disabled)
+resource "aws_s3_bucket_website_configuration" "frontend_website" {
+  count  = var.enable_cloudfront ? 0 : 1
+  bucket = aws_s3_bucket.frontend.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
 }
 
 # 2. CloudFront Origin Access Control (OAC)
@@ -28,7 +42,7 @@ resource "aws_cloudfront_origin_access_control" "oac" {
   signing_protocol                  = "sigv4"
 }
 
-# 3. S3 Bucket Policy allowing CloudFront OAC read
+# 3a. S3 Bucket Policy allowing CloudFront OAC read (When CloudFront is enabled)
 resource "aws_s3_bucket_policy" "frontend_policy" {
   count  = var.enable_cloudfront ? 1 : 0
   bucket = aws_s3_bucket.frontend.id
@@ -49,6 +63,27 @@ resource "aws_s3_bucket_policy" "frontend_policy" {
             "AWS:SourceArn" = aws_cloudfront_distribution.cdn[0].arn
           }
         }
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.frontend_block]
+}
+
+# 3b. S3 Bucket Policy allowing Public Read for Direct S3 Website Hosting (When CloudFront is disabled)
+resource "aws_s3_bucket_policy" "frontend_public_policy" {
+  count  = var.enable_cloudfront ? 0 : 1
+  bucket = aws_s3_bucket.frontend.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.frontend.arn}/*"
       }
     ]
   })
