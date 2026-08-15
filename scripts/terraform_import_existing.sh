@@ -43,7 +43,9 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/nu
 if [ -n "$ACCOUNT_ID" ]; then
   terraform import aws_iam_policy.ecs_task_s3 "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-ecs-task-s3-policy" || true
   terraform import aws_iam_policy.lambda_policy "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-lambda-policy" || true
+  terraform import aws_iam_policy.ecs_execution_secrets "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-ecs-execution-secrets-policy" || true
 fi
+
 
 # 5. Secrets Manager
 if aws secretsmanager describe-secret --secret-id "TicketDesk-db-credentials" --region us-east-1 >/dev/null 2>&1; then
