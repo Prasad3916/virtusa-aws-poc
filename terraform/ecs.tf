@@ -1,4 +1,4 @@
-# 1. ECR Repository with Image Vulnerability Scan on Push (Checklist #5, #19)
+# 1. ECR Repositories with Image Vulnerability Scan on Push (Checklist #5, #19)
 resource "aws_ecr_repository" "api" {
   name                 = "${lower(var.project_name)}-api"
   image_tag_mutability = "MUTABLE"
@@ -11,6 +11,34 @@ resource "aws_ecr_repository" "api" {
     Name = "${var.project_name}-ecr-api"
   }
 }
+
+locals {
+  all_microservices = [
+    "frontend",
+    "api-gateway",
+    "eureka-server",
+    "auth-service",
+    "ticket-service",
+    "comment-service",
+    "attachment-service",
+    "dashboard-service"
+  ]
+}
+
+resource "aws_ecr_repository" "services" {
+  for_each             = toset(local.all_microservices)
+  name                 = "${lower(var.project_name)}-${each.key}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-ecr-${each.key}"
+  }
+}
+
 
 # 2. ECS Cluster (Checklist #19)
 resource "aws_ecs_cluster" "main" {

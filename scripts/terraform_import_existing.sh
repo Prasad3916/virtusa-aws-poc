@@ -207,6 +207,15 @@ if aws ecr describe-repositories --repository-names ticketdesk-api --region us-e
   terraform import aws_ecr_repository.api ticketdesk-api || true
 fi
 
+SERVICES=("frontend" "api-gateway" "eureka-server" "auth-service" "ticket-service" "comment-service" "attachment-service" "dashboard-service")
+for s in "${SERVICES[@]}"; do
+  if aws ecr describe-repositories --repository-names "ticketdesk-$s" --region us-east-1 >/dev/null 2>&1; then
+    echo "Importing existing ECR repository ticketdesk-$s..."
+    terraform import "aws_ecr_repository.services[\"$s\"]" "ticketdesk-$s" || true
+  fi
+done
+
+
 # 7. IAM Roles & Policies
 if aws iam get-role --role-name "TicketDesk-ecs-execution-role" >/dev/null 2>&1; then
   terraform import aws_iam_role.ecs_execution_role "TicketDesk-ecs-execution-role" || true

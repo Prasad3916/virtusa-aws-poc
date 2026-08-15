@@ -112,23 +112,83 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build, tag, and push all microservice & frontend images to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.vars.outputs.sha_short }}
         run: |
+          # 1. Build and push Frontend
+          echo "Building and pushing ticketdesk-frontend..."
+          docker build \
+            -t $ECR_REGISTRY/ticketdesk-frontend:$IMAGE_TAG \
+            -t $ECR_REGISTRY/ticketdesk-frontend:latest \
+            ./ticketapplication/frontend
+          docker push $ECR_REGISTRY/ticketdesk-frontend:$IMAGE_TAG
+          docker push $ECR_REGISTRY/ticketdesk-frontend:latest
+
+          # 2. Build and push core API image
+          echo "Building and pushing ticketdesk-api..."
           docker build \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             ./ticketapplication/backend/ticket-service
-
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # 3. Build and push all Backend Microservices
+          for svc in eureka-server api-gateway auth-service ticket-service comment-service attachment-service dashboard-service; do
+            echo "Building and pushing ticketdesk-$svc..."
+            docker build \
+              -t $ECR_REGISTRY/ticketdesk-$svc:$IMAGE_TAG \
+              -t $ECR_REGISTRY/ticketdesk-$svc:latest \
+              ./ticketapplication/backend/$svc
+            docker push $ECR_REGISTRY/ticketdesk-$svc:$IMAGE_TAG
+            docker push $ECR_REGISTRY/ticketdesk-$svc:latest
+          done
+
+
+  # ── Stage 4b: Deploy Frontend Build to AWS S3 ─────────────────────────────
+  deploy-frontend-s3:
+    name: Deploy React Frontend to AWS S3
+    needs: build-and-push-ecr
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: './ticketapplication/frontend/package-lock.json'
+
+      - name: Build React Frontend
+        run: |
+          cd ./ticketapplication/frontend
+          npm ci
+          npm run build
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync Frontend Assets to S3 Bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="ticketdesk-frontend-$ACCOUNT_ID"
+          echo "Syncing compiled static assets to s3://$BUCKET_NAME..."
+          aws s3 sync ./ticketapplication/frontend/dist "s3://$BUCKET_NAME" --delete --region ${{ env.AWS_REGION }}
+
 
   # ── Stage 5: Deploy to AWS ECS Fargate & Wait for Stability ─────────────────
   deploy-ecs:
     name: Deploy to ECS Fargate
-    needs: build-and-push-ecr
+    needs: [build-and-push-ecr, deploy-frontend-s3]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
@@ -162,6 +222,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout repository
+
         uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
