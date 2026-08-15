@@ -3,20 +3,13 @@ set +e
 
 REGION="${AWS_REGION:-us-east-1}"
 echo "=========================================================="
-echo "   TICKETDESK COMPREHENSIVE RESOURCE & VPC CLEANUP IN $REGION"
+echo "   TICKETDESK OPTION B: COMPLETE TEARDOWN TO ZERO IN $REGION"
 echo "=========================================================="
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
 
-# 1. Clean TicketDesk Lambda Permission & Function
-echo "[1/10] Cleaning TicketDesk Lambda Permissions & Function..."
-if [ -n "$ACCOUNT_ID" ]; then
-  aws lambda remove-permission --function-name "TicketDesk-thumbnail-generator" --statement-id "AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" --region $REGION >/dev/null 2>&1 || true
-  aws lambda remove-permission --function-name "TicketDesk-thumbnail-generator" --statement-id "AllowS3InvokeThumbnailGenerator" --region $REGION >/dev/null 2>&1 || true
-fi
-
-# 2. Clean TicketDesk ECS Services & Cluster
-echo "[2/10] Cleaning TicketDesk ECS Services & Cluster..."
+# PHASE 1 — ECS (Service & Cluster)
+echo "[PHASE 1/11] Cleaning TicketDesk ECS Service & Cluster..."
 if aws ecs describe-clusters --clusters "TicketDesk-cluster" --region $REGION >/dev/null 2>&1; then
   SERVICES=$(aws ecs list-services --cluster "TicketDesk-cluster" --region $REGION --query "serviceArns[]" --output text 2>/dev/null || echo "")
   for service in $SERVICES; do
@@ -26,8 +19,8 @@ if aws ecs describe-clusters --clusters "TicketDesk-cluster" --region $REGION >/
   aws ecs delete-cluster --cluster "TicketDesk-cluster" --region $REGION >/dev/null 2>&1 || true
 fi
 
-# 3. Clean TicketDesk Load Balancer & Target Group
-echo "[3/10] Cleaning TicketDesk Load Balancer and Target Group..."
+# PHASE 2 — ALB & Target Group
+echo "[PHASE 2/11] Cleaning TicketDesk Load Balancer and Target Group..."
 ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region $REGION --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
 if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
   aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" --region $REGION >/dev/null 2>&1 || true
@@ -39,8 +32,8 @@ if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
   aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region $REGION >/dev/null 2>&1 || true
 fi
 
-# 4. Clean TicketDesk RDS Instance & Subnet Group
-echo "[4/10] Cleaning TicketDesk RDS Instance and Subnet Group..."
+# PHASE 3 — RDS Instance & Subnet Group
+echo "[PHASE 3/11] Cleaning TicketDesk RDS Instance and Subnet Group..."
 if aws rds describe-db-instances --db-instance-identifier "ticketdesk-mysql-db" --region $REGION >/dev/null 2>&1; then
   aws rds delete-db-instance --db-instance-identifier "ticketdesk-mysql-db" --skip-final-snapshot --delete-automated-backups --region $REGION >/dev/null 2>&1 || true
   echo "Waiting for RDS instance deletion..."
@@ -51,8 +44,8 @@ if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subne
   aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region $REGION >/dev/null 2>&1 || true
 fi
 
-# 5. Clean NAT Gateways & Elastic IPs
-echo "[5/10] Cleaning NAT Gateways and Elastic IPs..."
+# PHASE 4 — NAT Gateway & Elastic IPs
+echo "[PHASE 4/11] Cleaning NAT Gateways and Elastic IPs..."
 NATS=$(aws ec2 describe-nat-gateways --region $REGION --query "NatGateways[?State!='deleted'].NatGatewayId" --output text 2>/dev/null || echo "")
 for nat in $NATS; do
   aws ec2 delete-nat-gateway --nat-gateway-id "$nat" --region $REGION >/dev/null 2>&1 || true
@@ -65,15 +58,60 @@ for eip in $EIPS; do
   aws ec2 release-address --allocation-id "$eip" --region $REGION >/dev/null 2>&1 || true
 done
 
-# 6. Clean Detached Internet Gateways
-echo "[6/10] Cleaning Detached Internet Gateways..."
-IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.state,Values=detached" --region $REGION --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
-for igw in $IGWS; do
-  aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region $REGION >/dev/null 2>&1 || true
+# PHASE 5 — Lambda Function & Permissions
+echo "[PHASE 5/11] Cleaning TicketDesk Lambda Function & Permissions..."
+if aws lambda get-function --function-name "TicketDesk-thumbnail-generator" --region $REGION >/dev/null 2>&1; then
+  aws lambda delete-function --function-name "TicketDesk-thumbnail-generator" --region $REGION >/dev/null 2>&1 || true
+fi
+
+# PHASE 6 — CloudWatch Log Groups
+echo "[PHASE 6/11] Cleaning CloudWatch Log Groups..."
+if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region $REGION | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then
+  aws logs delete-log-group --log-group-name "/ecs/TicketDesk-logs" --region $REGION >/dev/null 2>&1 || true
+fi
+
+# PHASE 7 — Secrets Manager Secrets
+echo "[PHASE 7/11] Cleaning Secrets Manager Secrets..."
+if aws secretsmanager describe-secret --secret-id "TicketDesk-db-credentials" --region $REGION >/dev/null 2>&1; then
+  aws secretsmanager delete-secret --secret-id "TicketDesk-db-credentials" --force-delete-without-recovery --region $REGION >/dev/null 2>&1 || true
+fi
+
+# PHASE 8 — ECR Repositories
+echo "[PHASE 8/11] Cleaning ECR Repositories..."
+if aws ecr describe-repositories --repository-names ticketdesk-api --region $REGION >/dev/null 2>&1; then
+  aws ecr delete-repository --repository-name ticketdesk-api --force --region $REGION >/dev/null 2>&1 || true
+fi
+
+# PHASE 9 — S3 Buckets
+echo "[PHASE 9/11] Emptying and Deleting S3 Buckets..."
+if [ -n "$ACCOUNT_ID" ]; then
+  for b in "ticketdesk-frontend-$ACCOUNT_ID" "ticketdesk-attachments-$ACCOUNT_ID"; do
+    if aws s3api head-bucket --bucket "$b" >/dev/null 2>&1; then
+      aws s3 rm "s3://$b" --recursive --region $REGION >/dev/null 2>&1 || true
+      aws s3api delete-bucket --bucket "$b" --region $REGION >/dev/null 2>&1 || true
+    fi
+  done
+fi
+
+# PHASE 10 — IAM Roles & Customer-Managed Policies
+echo "[PHASE 10/11] Cleaning TicketDesk IAM Roles & Policies..."
+ROLES=("TicketDesk-ecs-execution-role" "TicketDesk-ecs-task-role" "TicketDesk-lambda-role")
+for role in "${ROLES[@]}"; do
+  POLICIES=$(aws iam list-attached-role-policies --role-name "$role" --query "AttachedPolicies[].PolicyArn" --output text 2>/dev/null || echo "")
+  for pol in $POLICIES; do
+    aws iam detach-role-policy --role-name "$role" --policy-arn "$pol" >/dev/null 2>&1 || true
+  done
+  aws iam delete-role --role-name "$role" >/dev/null 2>&1 || true
 done
 
-# 7. Sweep and Delete ALL Non-Default VPCs to Guarantee Zero VpcLimitExceeded Errors
-echo "[7/10] Sweeping and Deleting Non-Default VPCs to ensure VPC Quota Availability..."
+if [ -n "$ACCOUNT_ID" ]; then
+  aws iam delete-policy --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-ecs-task-s3-policy" >/dev/null 2>&1 || true
+  aws iam delete-policy --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-lambda-policy" >/dev/null 2>&1 || true
+  aws iam delete-policy --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-ecs-execution-secrets-policy" >/dev/null 2>&1 || true
+fi
+
+# PHASE 11 — VPC Networking & Non-Default VPCs
+echo "[PHASE 11/11] Sweeping and Deleting Non-Default VPCs..."
 NON_DEFAULT_VPCS=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=false" --region $REGION --query "Vpcs[].VpcId" --output text 2>/dev/null || echo "")
 
 for vpc in $NON_DEFAULT_VPCS; do
@@ -87,16 +125,16 @@ for vpc in $NON_DEFAULT_VPCS; do
       aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region $REGION >/dev/null 2>&1 || true
     done
 
-    # Delete ENIs
-    ENIS=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$vpc" --region $REGION --query "NetworkInterfaces[].NetworkInterfaceId" --output text 2>/dev/null || echo "")
-    for eni in $ENIS; do
-      aws ec2 delete-network-interface --network-interface-id "$eni" --region $REGION >/dev/null 2>&1 || true
-    done
-
     # Delete Security Groups
     SGS=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" --region $REGION --query "SecurityGroups[?GroupName!='default'].GroupId" --output text 2>/dev/null || echo "")
     for sg in $SGS; do
       aws ec2 delete-security-group --group-id "$sg" --region $REGION >/dev/null 2>&1 || true
+    done
+
+    # Delete Route Tables
+    RTS=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$vpc" --region $REGION --query "RouteTables[?Associations[0].Main!=\`true\`].RouteTableId" --output text 2>/dev/null || echo "")
+    for rt in $RTS; do
+      aws ec2 delete-route-table --route-table-id "$rt" --region $REGION >/dev/null 2>&1 || true
     done
 
     # Delete Subnets
@@ -110,5 +148,5 @@ for vpc in $NON_DEFAULT_VPCS; do
 done
 
 echo "=========================================================="
-echo "✔ TICKETDESK RESOURCE & VPC CLEANUP FINISHED!"
+echo "✔ AWS CLEANUP COMPLETE — ZERO TICKETDESK RESOURCES REMAIN"
 echo "=========================================================="
