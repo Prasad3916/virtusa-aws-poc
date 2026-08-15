@@ -110,11 +110,29 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
       terraform import aws_eip.nat "$EIP_ALLOC" || true
     fi
 
-    NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" --region us-east-1 --query "NatGateways[0].NatGatewayId" --output text 2>/dev/null || echo "")
+    NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "NatGateways[?State!='deleted'].NatGatewayId | [0]" --output text 2>/dev/null || echo "")
+    if [ -z "$NAT_ID" ] || [ "$NAT_ID" = "None" ]; then
+      NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=tag:Name,Values=TicketDesk-nat-gw" --region us-east-1 --query "NatGateways[?State!='deleted'].NatGatewayId | [0]" --output text 2>/dev/null || echo "")
+    fi
+
     if [ -n "$NAT_ID" ] && [ "$NAT_ID" != "None" ]; then
       echo "Importing existing NAT Gateway ($NAT_ID)..."
       terraform import aws_nat_gateway.nat "$NAT_ID" || true
+    else
+      TOTAL_NATS=$(aws ec2 describe-nat-gateways --region us-east-1 --query "length(NatGateways[?State!='deleted'])" --output text 2>/dev/null || echo "0")
+      if [ "$TOTAL_NATS" -ge 5 ]; then
+        echo "Account NAT Gateway limit reached ($TOTAL_NATS/5). Sweeping stale NAT Gateways in non-TicketDesk VPCs..."
+        STALE_NATS=$(aws ec2 describe-nat-gateways --region us-east-1 --query "NatGateways[?State!='deleted' && VpcId!='$VPC_ID'].NatGatewayId" --output text 2>/dev/null || echo "")
+        for snat in $STALE_NATS; do
+          if [ -n "$snat" ] && [ "$snat" != "None" ]; then
+            echo "Deleting stale NAT Gateway $snat to free account quota..."
+            aws ec2 delete-nat-gateway --nat-gateway-id "$snat" --region us-east-1 >/dev/null 2>&1 || true
+          fi
+        done
+        sleep 10
+      fi
     fi
+
 
   fi
 fi
