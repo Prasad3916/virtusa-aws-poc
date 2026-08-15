@@ -1,7 +1,7 @@
 #!/bin/bash
 set +e
 
-echo "Checking and importing pre-existing global AWS resources into Terraform state..."
+echo "Reconciling and importing pre-existing TicketDesk AWS resources into Terraform state..."
 
 cd terraform
 
@@ -11,37 +11,65 @@ terraform init -upgrade
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
 
-# 1. VPC & Core Networking
-VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+# 1. VPC & Networking Resources
+VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=TicketDesk" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+  VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+fi
+
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
   echo "Importing existing TicketDesk VPC ($VPC_ID)..."
   terraform import aws_vpc.main "$VPC_ID" || true
+
+  # Import Subnets within this VPC
+  SUB_PUB_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
+  if [ -z "$SUB_PUB_1" ] || [ "$SUB_PUB_1" = "None" ]; then
+    SUB_PUB_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
+  fi
+  if [ -n "$SUB_PUB_1" ] && [ "$SUB_PUB_1" != "None" ]; then
+    terraform import 'aws_subnet.public[0]' "$SUB_PUB_1" || true
+  fi
+
+  SUB_PUB_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
+  if [ -z "$SUB_PUB_2" ] || [ "$SUB_PUB_2" = "None" ]; then
+    SUB_PUB_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "Subnets[1].SubnetId" --output text 2>/dev/null || echo "")
+  fi
+  if [ -n "$SUB_PUB_2" ] && [ "$SUB_PUB_2" != "None" ]; then
+    terraform import 'aws_subnet.public[1]' "$SUB_PUB_2" || true
+  fi
+
+  SUB_PRIV_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
+  if [ -n "$SUB_PRIV_1" ] && [ "$SUB_PRIV_1" != "None" ]; then
+    terraform import 'aws_subnet.private[0]' "$SUB_PRIV_1" || true
+  fi
+
+  SUB_PRIV_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
+  if [ -n "$SUB_PRIV_2" ] && [ "$SUB_PRIV_2" != "None" ]; then
+    terraform import 'aws_subnet.private[1]' "$SUB_PRIV_2" || true
+  fi
+
+  # Import Route Tables
+  RT_PUB=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-public-rt" --region us-east-1 --query "RouteTables[0].RouteTableId" --output text 2>/dev/null || echo "")
+  if [ -n "$RT_PUB" ] && [ "$RT_PUB" != "None" ]; then
+    terraform import aws_route_table.public "$RT_PUB" || true
+  fi
+
+  RT_PRIV=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Name,Values=TicketDesk-private-rt" --region us-east-1 --query "RouteTables[0].RouteTableId" --output text 2>/dev/null || echo "")
+  if [ -n "$RT_PRIV" ] && [ "$RT_PRIV" != "None" ]; then
+    terraform import aws_route_table.private "$RT_PRIV" || true
+  fi
+
+  # Import NAT Gateway
+  NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" --region us-east-1 --query "NatGateways[0].NatGatewayId" --output text 2>/dev/null || echo "")
+  if [ -n "$NAT_ID" ] && [ "$NAT_ID" != "None" ]; then
+    terraform import aws_nat_gateway.nat "$NAT_ID" || true
+  fi
 fi
 
 IGW_ID=$(aws ec2 describe-internet-gateways --filters "Name=tag:Name,Values=TicketDesk-igw" --region us-east-1 --query "InternetGateways[0].InternetGatewayId" --output text 2>/dev/null || echo "")
 if [ -n "$IGW_ID" ] && [ "$IGW_ID" != "None" ]; then
   echo "Importing existing Internet Gateway ($IGW_ID)..."
   terraform import aws_internet_gateway.igw "$IGW_ID" || true
-fi
-
-SUB_PUB_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=TicketDesk-public-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-if [ -n "$SUB_PUB_1" ] && [ "$SUB_PUB_1" != "None" ]; then
-  terraform import 'aws_subnet.public[0]' "$SUB_PUB_1" || true
-fi
-
-SUB_PUB_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=TicketDesk-public-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-if [ -n "$SUB_PUB_2" ] && [ "$SUB_PUB_2" != "None" ]; then
-  terraform import 'aws_subnet.public[1]' "$SUB_PUB_2" || true
-fi
-
-SUB_PRIV_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=TicketDesk-private-subnet-1" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-if [ -n "$SUB_PRIV_1" ] && [ "$SUB_PRIV_1" != "None" ]; then
-  terraform import 'aws_subnet.private[0]' "$SUB_PRIV_1" || true
-fi
-
-SUB_PRIV_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=TicketDesk-private-subnet-2" --region us-east-1 --query "Subnets[0].SubnetId" --output text 2>/dev/null || echo "")
-if [ -n "$SUB_PRIV_2" ] && [ "$SUB_PRIV_2" != "None" ]; then
-  terraform import 'aws_subnet.private[1]' "$SUB_PRIV_2" || true
 fi
 
 # 2. Security Groups
@@ -73,7 +101,13 @@ if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
   terraform import aws_lb_target_group.api "$TG_ARN" || true
 fi
 
-# 4. Database Resources
+# 4. CloudWatch Log Group
+if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region us-east-1 | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then
+  echo "Importing existing CloudWatch log group..."
+  terraform import aws_cloudwatch_log_group.ecs_logs "/ecs/TicketDesk-logs" || true
+fi
+
+# 5. Database Resources
 if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing DB Subnet Group ticketdesk-db-subnet-group..."
   terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
@@ -84,7 +118,7 @@ if aws rds describe-db-instances --db-instance-identifier "ticketdesk-mysql-db" 
   terraform import aws_db_instance.main "ticketdesk-mysql-db" || true
 fi
 
-# 5. ECS & ECR
+# 6. ECS & ECR
 if aws ecs describe-clusters --clusters "TicketDesk-cluster" --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing ECS Cluster TicketDesk-cluster..."
   terraform import aws_ecs_cluster.main "TicketDesk-cluster" || true
@@ -95,7 +129,7 @@ if aws ecr describe-repositories --repository-names ticketdesk-api --region us-e
   terraform import aws_ecr_repository.api ticketdesk-api || true
 fi
 
-# 6. IAM Roles & Policies
+# 7. IAM Roles & Policies
 if aws iam get-role --role-name "TicketDesk-ecs-execution-role" >/dev/null 2>&1; then
   terraform import aws_iam_role.ecs_execution_role "TicketDesk-ecs-execution-role" || true
 fi
@@ -114,7 +148,7 @@ if [ -n "$ACCOUNT_ID" ]; then
   terraform import aws_iam_policy.ecs_execution_secrets "arn:aws:iam::$ACCOUNT_ID:policy/TicketDesk-ecs-execution-secrets-policy" || true
 fi
 
-# 7. Secrets & SSM Parameters
+# 8. Secrets & SSM Parameters
 if aws secretsmanager describe-secret --secret-id "TicketDesk-db-credentials" --region us-east-1 >/dev/null 2>&1; then
   terraform import aws_secretsmanager_secret.db_credentials "TicketDesk-db-credentials" || true
 fi
@@ -131,13 +165,16 @@ if aws ssm get-parameter --name "/ticketdesk/S3_BUCKET" --region us-east-1 >/dev
   terraform import aws_ssm_parameter.s3_bucket "/ticketdesk/S3_BUCKET" || true
 fi
 
-# 8. SNS Topic, Lambda & S3 Buckets
+# 9. SNS Topic, Lambda & S3 Buckets
 if [ -n "$ACCOUNT_ID" ]; then
   terraform import aws_sns_topic.alarms "arn:aws:sns:us-east-1:$ACCOUNT_ID:TicketDesk-alarms-topic" || true
 fi
 
 if aws lambda get-function --function-name "TicketDesk-thumbnail-generator" --region us-east-1 >/dev/null 2>&1; then
   terraform import aws_lambda_function.thumbnail_generator "TicketDesk-thumbnail-generator" || true
+  if [ -n "$ACCOUNT_ID" ]; then
+    terraform import aws_lambda_permission.allow_s3_invoke "TicketDesk-thumbnail-generator/AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" || true
+  fi
 fi
 
 if [ -n "$ACCOUNT_ID" ]; then
