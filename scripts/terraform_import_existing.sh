@@ -100,16 +100,7 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
       fi
     fi
 
-    # Import Elastic IP (EIP) & NAT Gateway
-    EIP_ALLOC=$(aws ec2 describe-addresses --filters "Name=tag:Name,Values=TicketDesk-nat-eip" --region us-east-1 --query "Addresses[0].AllocationId" --output text 2>/dev/null || echo "")
-    if [ -z "$EIP_ALLOC" ] || [ "$EIP_ALLOC" = "None" ]; then
-      EIP_ALLOC=$(aws ec2 describe-addresses --region us-east-1 --query "Addresses[0].AllocationId" --output text 2>/dev/null || echo "")
-    fi
-    if [ -n "$EIP_ALLOC" ] && [ "$EIP_ALLOC" != "None" ]; then
-      echo "Importing existing Elastic IP ($EIP_ALLOC)..."
-      terraform import aws_eip.nat "$EIP_ALLOC" || true
-    fi
-
+    # Import Active NAT Gateway & Associated Elastic IP (EIP)
     NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" --region us-east-1 --query "NatGateways[?State!='deleted'].NatGatewayId | [0]" --output text 2>/dev/null || echo "")
     if [ -z "$NAT_ID" ] || [ "$NAT_ID" = "None" ]; then
       NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=tag:Name,Values=TicketDesk-nat-gw" --region us-east-1 --query "NatGateways[?State!='deleted'].NatGatewayId | [0]" --output text 2>/dev/null || echo "")
@@ -118,7 +109,22 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
     if [ -n "$NAT_ID" ] && [ "$NAT_ID" != "None" ]; then
       echo "Importing existing NAT Gateway ($NAT_ID)..."
       terraform import aws_nat_gateway.nat "$NAT_ID" || true
+
+      EIP_ALLOC=$(aws ec2 describe-nat-gateways --nat-gateway-ids "$NAT_ID" --region us-east-1 --query "NatGateways[0].NatGatewayAddresses[0].AllocationId" --output text 2>/dev/null || echo "")
+      if [ -n "$EIP_ALLOC" ] && [ "$EIP_ALLOC" != "None" ]; then
+        echo "Importing associated Elastic IP ($EIP_ALLOC) for NAT Gateway $NAT_ID..."
+        terraform import aws_eip.nat "$EIP_ALLOC" || true
+      fi
     else
+      EIP_ALLOC=$(aws ec2 describe-addresses --filters "Name=tag:Name,Values=TicketDesk-nat-eip" --region us-east-1 --query "Addresses[0].AllocationId" --output text 2>/dev/null || echo "")
+      if [ -z "$EIP_ALLOC" ] || [ "$EIP_ALLOC" = "None" ]; then
+        EIP_ALLOC=$(aws ec2 describe-addresses --region us-east-1 --query "Addresses[0].AllocationId" --output text 2>/dev/null || echo "")
+      fi
+      if [ -n "$EIP_ALLOC" ] && [ "$EIP_ALLOC" != "None" ]; then
+        echo "Importing existing Elastic IP ($EIP_ALLOC)..."
+        terraform import aws_eip.nat "$EIP_ALLOC" || true
+      fi
+
       TOTAL_NATS=$(aws ec2 describe-nat-gateways --region us-east-1 --query "length(NatGateways[?State!='deleted'])" --output text 2>/dev/null || echo "0")
       if [ "$TOTAL_NATS" -ge 5 ]; then
         echo "Account NAT Gateway limit reached ($TOTAL_NATS/5). Sweeping stale NAT Gateways in non-TicketDesk VPCs..."
@@ -132,6 +138,7 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
         sleep 10
       fi
     fi
+
 
 
   fi
@@ -242,7 +249,7 @@ if aws ecr describe-repositories --repository-names ticketdesk-api --region us-e
   terraform import aws_ecr_repository.api ticketdesk-api || true
 fi
 
-SERVICES=("frontend" "api-gateway" "eureka-server" "auth-service" "ticket-service" "comment-service" "attachment-service" "dashboard-service")
+SERVICES=("api-gateway" "eureka-server" "auth-service" "ticket-service" "comment-service" "attachment-service" "dashboard-service")
 for s in "${SERVICES[@]}"; do
   if aws ecr describe-repositories --repository-names "ticketdesk-$s" --region us-east-1 >/dev/null 2>&1; then
     echo "Importing existing ECR repository ticketdesk-$s..."

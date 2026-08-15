@@ -14,7 +14,6 @@ resource "aws_ecr_repository" "api" {
 
 locals {
   all_microservices = [
-    "frontend",
     "api-gateway",
     "eureka-server",
     "auth-service",

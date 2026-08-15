@@ -117,16 +117,8 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.vars.outputs.sha_short }}
         run: |
-          # 1. Build and push Frontend
-          echo "Building and pushing ticketdesk-frontend..."
-          docker build \
-            -t $ECR_REGISTRY/ticketdesk-frontend:$IMAGE_TAG \
-            -t $ECR_REGISTRY/ticketdesk-frontend:latest \
-            ./ticketapplication/frontend
-          docker push $ECR_REGISTRY/ticketdesk-frontend:$IMAGE_TAG
-          docker push $ECR_REGISTRY/ticketdesk-frontend:latest
+          # 1. Build and push core API image
 
-          # 2. Build and push core API image
           echo "Building and pushing ticketdesk-api..."
           docker build \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
