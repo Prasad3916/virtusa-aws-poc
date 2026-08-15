@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Checking and importing pre-existing AWS resources into Terraform state..."
+echo "Checking and importing pre-existing global AWS resources into Terraform state..."
 
 cd terraform
 
@@ -9,84 +9,11 @@ echo "Initializing Terraform providers..."
 rm -f .terraform.lock.hcl
 terraform init -upgrade
 
-# 0. Clean up any orphan non-default VPCs, Subnets, ENIs, and IGWs that are not the active VPC
-ACTIVE_VPC=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
-ALL_VPCS=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=false" --region us-east-1 --query "Vpcs[].VpcId" --output text 2>/dev/null || echo "")
-
-for vpc in $ALL_VPCS; do
-  if [ -n "$ACTIVE_VPC" ] && [ "$vpc" != "$ACTIVE_VPC" ] && [ "$vpc" != "None" ]; then
-    echo "Deleting orphan VPC ($vpc), subnets, ENIs, and security groups..."
-    
-    ENIS=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$vpc" "Name=status,Values=available" --region us-east-1 --query "NetworkInterfaces[].NetworkInterfaceId" --output text 2>/dev/null || echo "")
-    for eni in $ENIS; do
-      aws ec2 delete-network-interface --network-interface-id "$eni" --region us-east-1 >/dev/null 2>&1 || true
-    done
-
-    SGS=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" --region us-east-1 --query "SecurityGroups[?GroupName!='default'].GroupId" --output text 2>/dev/null || echo "")
-    for sg in $SGS; do
-      aws ec2 delete-security-group --group-id "$sg" --region us-east-1 >/dev/null 2>&1 || true
-    done
-
-    IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$vpc" --region us-east-1 --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
-    for igw in $IGWS; do
-      aws ec2 detach-internet-gateway --internet-gateway-id "$igw" --vpc-id "$vpc" --region us-east-1 >/dev/null 2>&1 || true
-      aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region us-east-1 >/dev/null 2>&1 || true
-    done
-
-    SUBNETS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc" --region us-east-1 --query "Subnets[].SubnetId" --output text 2>/dev/null || echo "")
-    for sub in $SUBNETS; do
-      aws ec2 delete-subnet --subnet-id "$sub" --region us-east-1 >/dev/null 2>&1 || true
-    done
-
-    aws ec2 delete-vpc --vpc-id "$vpc" --region us-east-1 >/dev/null 2>&1 || true
-  fi
-done
-
-# Detect and import existing active VPC, Subnets, and Security Groups
-ALB_VPC_ID=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
-if [ -z "$ALB_VPC_ID" ] || [ "$ALB_VPC_ID" = "None" ]; then
-  ALB_VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
-fi
-
-
-if [ -n "$ALB_VPC_ID" ] && [ "$ALB_VPC_ID" != "None" ]; then
-  echo "Importing existing VPC ($ALB_VPC_ID)..."
-  terraform import aws_vpc.main "$ALB_VPC_ID" || true
-
-  ALB_SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=group-name,Values=TicketDesk-alb-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
-  if [ -n "$ALB_SG" ] && [ "$ALB_SG" != "None" ]; then
-    terraform import aws_security_group.alb "$ALB_SG" || true
-  fi
-
-  ECS_SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=group-name,Values=TicketDesk-ecs-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
-  if [ -n "$ECS_SG" ] && [ "$ECS_SG" != "None" ]; then
-    terraform import aws_security_group.ecs_task "$ECS_SG" || true
-  fi
-
-  RDS_SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=group-name,Values=TicketDesk-rds-sg" --region us-east-1 --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || echo "")
-  if [ -n "$RDS_SG" ] && [ "$RDS_SG" != "None" ]; then
-    terraform import aws_security_group.rds "$RDS_SG" || true
-  fi
-
-  PUB_SUBNETS=($(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=tag:Name,Values=*public*" --region us-east-1 --query "Subnets[].SubnetId" --output text 2>/dev/null || echo ""))
-  if [ ${#PUB_SUBNETS[@]} -ge 2 ]; then
-    terraform import "aws_subnet.public[0]" "${PUB_SUBNETS[0]}" || true
-    terraform import "aws_subnet.public[1]" "${PUB_SUBNETS[1]}" || true
-  fi
-
-  PRIV_SUBNETS=($(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$ALB_VPC_ID" "Name=tag:Name,Values=*private*" --region us-east-1 --query "Subnets[].SubnetId" --output text 2>/dev/null || echo ""))
-  if [ ${#PRIV_SUBNETS[@]} -ge 2 ]; then
-    terraform import "aws_subnet.private[0]" "${PRIV_SUBNETS[0]}" || true
-    terraform import "aws_subnet.private[1]" "${PRIV_SUBNETS[1]}" || true
-  fi
-fi
-
 # 1. ECR Repository
 if aws ecr describe-repositories --repository-names ticketdesk-api --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing ECR repository ticketdesk-api..."
   terraform import aws_ecr_repository.api ticketdesk-api || true
 fi
-
 
 # 2. CloudWatch Log Group
 if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region us-east-1 | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then
@@ -128,84 +55,18 @@ if aws ssm get-parameter --name "/ticketdesk/S3_BUCKET" --region us-east-1 >/dev
   terraform import aws_ssm_parameter.s3_bucket "/ticketdesk/S3_BUCKET" || true
 fi
 
-# 7. DB Subnet Group
-if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
-  DB_USING=$(aws rds describe-db-instances --region us-east-1 --query "DBInstances[?DBSubnetGroup.DBSubnetGroupName=='ticketdesk-db-subnet-group'].DBInstanceIdentifier" --output text 2>/dev/null || echo "")
-  if [ -z "$DB_USING" ] || [ "$DB_USING" = "None" ]; then
-    echo "Cleaning up stale DB subnet group from previous VPC..."
-    aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1 || true
-  else
-    terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
-  fi
-fi
-
-# 8. ALB and Target Group
-ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
-if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
-  terraform import aws_lb.main "$ALB_ARN" || true
-fi
-
-TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
-if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
-  TG_ALB=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].LoadBalancerArns[0]" --output text 2>/dev/null || echo "")
-  if [ -z "$TG_ALB" ] || [ "$TG_ALB" = "None" ]; then
-    echo "Cleaning up stale unattached Target Group..."
-    aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region us-east-1 >/dev/null 2>&1 || true
-  else
-    terraform import aws_lb_target_group.api "$TG_ARN" || true
-  fi
-fi
-
-
-# 9. SNS Topic
+# 7. SNS Topic
 if [ -n "$ACCOUNT_ID" ]; then
   terraform import aws_sns_topic.alarms "arn:aws:sns:us-east-1:$ACCOUNT_ID:TicketDesk-alarms-topic" || true
 fi
 
-# 10. Lambda Function
+# 8. Lambda Function
 if aws lambda get-function --function-name "TicketDesk-thumbnail-generator" --region us-east-1 >/dev/null 2>&1; then
   echo "Importing existing Lambda function TicketDesk-thumbnail-generator..."
   terraform import aws_lambda_function.thumbnail_generator "TicketDesk-thumbnail-generator" || true
 fi
 
-# 11. ALB Listener
-if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
-  LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --region us-east-1 --query "Listeners[0].ListenerArn" --output text 2>/dev/null || echo "")
-  if [ -n "$LISTENER_ARN" ] && [ "$LISTENER_ARN" != "None" ]; then
-    echo "Importing existing ALB HTTP listener..."
-    terraform import aws_lb_listener.http "$LISTENER_ARN" || true
-  fi
-fi
-
-# 12. CloudWatch Dashboard & Alarms
-if aws cloudwatch get-dashboard --dashboard-name "TicketDesk-Dashboard" --region us-east-1 >/dev/null 2>&1; then
-  terraform import aws_cloudwatch_dashboard.main "TicketDesk-Dashboard" || true
-fi
-
-if aws cloudwatch describe-alarms --alarm-names "TicketDesk-ALB-5xx-Errors" --region us-east-1 | grep "TicketDesk-ALB-5xx-Errors" >/dev/null 2>&1; then
-  terraform import aws_cloudwatch_metric_alarm.alb_5xx "TicketDesk-ALB-5xx-Errors" || true
-fi
-
-if aws cloudwatch describe-alarms --alarm-names "TicketDesk-Unhealthy-Targets" --region us-east-1 | grep "TicketDesk-Unhealthy-Targets" >/dev/null 2>&1; then
-  terraform import aws_cloudwatch_metric_alarm.unhealthy_targets "TicketDesk-Unhealthy-Targets" || true
-fi
-
-if aws cloudwatch describe-alarms --alarm-names "TicketDesk-RDS-High-CPU" --region us-east-1 | grep "TicketDesk-RDS-High-CPU" >/dev/null 2>&1; then
-  terraform import aws_cloudwatch_metric_alarm.rds_high_cpu "TicketDesk-RDS-High-CPU" || true
-fi
-
-
-# 0. Clean up unused unattached EIPs to prevent AddressLimitExceeded
-echo "Checking and releasing unattached Elastic IPs..."
-UNATTACHED_EIPS=$(aws ec2 describe-addresses --region us-east-1 --query "Addresses[?AssociationId==null].AllocationId" --output text 2>/dev/null || echo "")
-for eip in $UNATTACHED_EIPS; do
-  if [ -n "$eip" ] && [ "$eip" != "None" ]; then
-    echo "Releasing unattached Elastic IP: $eip"
-    aws ec2 release-address --allocation-id "$eip" --region us-east-1 >/dev/null 2>&1 || true
-  fi
-done
-
-# 13. S3 Buckets
+# 9. S3 Buckets
 if [ -n "$ACCOUNT_ID" ]; then
   if aws s3api head-bucket --bucket "ticketdesk-frontend-$ACCOUNT_ID" >/dev/null 2>&1; then
     terraform import aws_s3_bucket.frontend "ticketdesk-frontend-$ACCOUNT_ID" || true
@@ -215,13 +76,4 @@ if [ -n "$ACCOUNT_ID" ]; then
   fi
 fi
 
-# 14. Lambda Permission
-if [ -n "$ACCOUNT_ID" ]; then
-  terraform import aws_lambda_permission.allow_s3_invoke "TicketDesk-thumbnail-generator/AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" || true
-fi
-
-echo "Import check complete. Proceeding with terraform apply..."
-
-
-
-
+echo "Import check complete. Proceeding with clean deployment..."
