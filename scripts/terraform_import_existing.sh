@@ -100,11 +100,22 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
       fi
     fi
 
-    # Import NAT Gateway
+    # Import Elastic IP (EIP) & NAT Gateway
+    EIP_ALLOC=$(aws ec2 describe-addresses --filters "Name=tag:Name,Values=TicketDesk-nat-eip" --region us-east-1 --query "Addresses[0].AllocationId" --output text 2>/dev/null || echo "")
+    if [ -z "$EIP_ALLOC" ] || [ "$EIP_ALLOC" = "None" ]; then
+      EIP_ALLOC=$(aws ec2 describe-addresses --region us-east-1 --query "Addresses[0].AllocationId" --output text 2>/dev/null || echo "")
+    fi
+    if [ -n "$EIP_ALLOC" ] && [ "$EIP_ALLOC" != "None" ]; then
+      echo "Importing existing Elastic IP ($EIP_ALLOC)..."
+      terraform import aws_eip.nat "$EIP_ALLOC" || true
+    fi
+
     NAT_ID=$(aws ec2 describe-nat-gateways --filters "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" --region us-east-1 --query "NatGateways[0].NatGatewayId" --output text 2>/dev/null || echo "")
     if [ -n "$NAT_ID" ] && [ "$NAT_ID" != "None" ]; then
+      echo "Importing existing NAT Gateway ($NAT_ID)..."
       terraform import aws_nat_gateway.nat "$NAT_ID" || true
     fi
+
   fi
 fi
 
