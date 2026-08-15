@@ -9,11 +9,45 @@ echo "Initializing Terraform providers..."
 rm -f .terraform.lock.hcl
 terraform init -upgrade
 
-# 0. Detect and import existing VPC, Subnets, and Security Groups to eliminate cross-VPC conflicts
+# 0. Clean up any orphan non-default VPCs, Subnets, ENIs, and IGWs that are not the active VPC
+ACTIVE_VPC=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
+ALL_VPCS=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=false" --region us-east-1 --query "Vpcs[].VpcId" --output text 2>/dev/null || echo "")
+
+for vpc in $ALL_VPCS; do
+  if [ -n "$ACTIVE_VPC" ] && [ "$vpc" != "$ACTIVE_VPC" ] && [ "$vpc" != "None" ]; then
+    echo "Deleting orphan VPC ($vpc), subnets, ENIs, and security groups..."
+    
+    ENIS=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$vpc" "Name=status,Values=available" --region us-east-1 --query "NetworkInterfaces[].NetworkInterfaceId" --output text 2>/dev/null || echo "")
+    for eni in $ENIS; do
+      aws ec2 delete-network-interface --network-interface-id "$eni" --region us-east-1 >/dev/null 2>&1 || true
+    done
+
+    SGS=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" --region us-east-1 --query "SecurityGroups[?GroupName!='default'].GroupId" --output text 2>/dev/null || echo "")
+    for sg in $SGS; do
+      aws ec2 delete-security-group --group-id "$sg" --region us-east-1 >/dev/null 2>&1 || true
+    done
+
+    IGWS=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$vpc" --region us-east-1 --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || echo "")
+    for igw in $IGWS; do
+      aws ec2 detach-internet-gateway --internet-gateway-id "$igw" --vpc-id "$vpc" --region us-east-1 >/dev/null 2>&1 || true
+      aws ec2 delete-internet-gateway --internet-gateway-id "$igw" --region us-east-1 >/dev/null 2>&1 || true
+    done
+
+    SUBNETS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$vpc" --region us-east-1 --query "Subnets[].SubnetId" --output text 2>/dev/null || echo "")
+    for sub in $SUBNETS; do
+      aws ec2 delete-subnet --subnet-id "$sub" --region us-east-1 >/dev/null 2>&1 || true
+    done
+
+    aws ec2 delete-vpc --vpc-id "$vpc" --region us-east-1 >/dev/null 2>&1 || true
+  fi
+done
+
+# Detect and import existing active VPC, Subnets, and Security Groups
 ALB_VPC_ID=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
 if [ -z "$ALB_VPC_ID" ] || [ "$ALB_VPC_ID" = "None" ]; then
   ALB_VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=TicketDesk-vpc" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
 fi
+
 
 if [ -n "$ALB_VPC_ID" ] && [ "$ALB_VPC_ID" != "None" ]; then
   echo "Importing existing VPC ($ALB_VPC_ID)..."
