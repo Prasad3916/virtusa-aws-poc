@@ -138,7 +138,7 @@ if [ -n "$SG_RDS" ] && [ "$SG_RDS" != "None" ]; then
   fi
 fi
 
-# 3. Load Balancer & Listener (Target group ticketdesk-tg created fresh)
+# 3. Load Balancer, Target Group & Listener
 ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
 if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
   if aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --region us-east-1 >/dev/null 2>&1; then
@@ -151,6 +151,15 @@ if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
     fi
   fi
 fi
+
+TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
+  if aws elbv2 describe-target-groups --target-group-arns "$TG_ARN" --region us-east-1 >/dev/null 2>&1; then
+    echo "Importing existing Target Group ticketdesk-tg ($TG_ARN)..."
+    terraform import aws_lb_target_group.api "$TG_ARN" || true
+  fi
+fi
+
 
 # 4. CloudWatch Log Group
 if aws logs describe-log-groups --log-group-name-prefix "/ecs/TicketDesk-logs" --region us-east-1 | grep "/ecs/TicketDesk-logs" >/dev/null 2>&1; then
