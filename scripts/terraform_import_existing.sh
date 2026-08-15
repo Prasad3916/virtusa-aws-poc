@@ -58,7 +58,13 @@ fi
 
 # 7. DB Subnet Group
 if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
-  terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+  DB_USING=$(aws rds describe-db-instances --region us-east-1 --query "DBInstances[?DBSubnetGroup.DBSubnetGroupName=='ticketdesk-db-subnet-group'].DBInstanceIdentifier" --output text 2>/dev/null || echo "")
+  if [ -z "$DB_USING" ] || [ "$DB_USING" = "None" ]; then
+    echo "Cleaning up stale DB subnet group from previous VPC..."
+    aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1 || true
+  else
+    terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+  fi
 fi
 
 # 8. ALB and Target Group
@@ -69,8 +75,15 @@ fi
 
 TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
 if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
-  terraform import aws_lb_target_group.api "$TG_ARN" || true
+  TG_ALB=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].LoadBalancerArns[0]" --output text 2>/dev/null || echo "")
+  if [ -z "$TG_ALB" ] || [ "$TG_ALB" = "None" ]; then
+    echo "Cleaning up stale unattached Target Group..."
+    aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region us-east-1 >/dev/null 2>&1 || true
+  else
+    terraform import aws_lb_target_group.api "$TG_ARN" || true
+  fi
 fi
+
 
 # 9. SNS Topic
 if [ -n "$ACCOUNT_ID" ]; then
