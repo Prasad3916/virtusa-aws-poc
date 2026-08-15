@@ -76,17 +76,30 @@ if [ -n "$ACCOUNT_ID" ]; then
   fi
 fi
 
-# 10. Target Group
-TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
-if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
-  echo "Importing existing Target Group..."
-  terraform import aws_lb_target_group.api "$TG_ARN" || true
+# 10. Target Group Validation & Import
+TG_VPC=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].VpcId" --output text 2>/dev/null || echo "")
+if [ -n "$TG_VPC" ] && [ "$TG_VPC" != "None" ]; then
+  VPC_EXISTS=$(aws ec2 describe-vpcs --vpc-ids "$TG_VPC" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" = "None" ]; then
+    echo "Cleaning broken Target Group referencing deleted VPC ($TG_VPC)..."
+    TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+    aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region us-east-1 >/dev/null 2>&1 || true
+  else
+    TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+    terraform import aws_lb_target_group.api "$TG_ARN" || true
+  fi
 fi
 
-# 11. DB Subnet Group
+# 11. DB Subnet Group Validation & Import
 if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
-  echo "Importing existing DB Subnet Group..."
-  terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+  DB_VPC=$(aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 --query "DBSubnetGroups[0].VpcId" --output text 2>/dev/null || echo "")
+  VPC_EXISTS=$(aws ec2 describe-vpcs --vpc-ids "$DB_VPC" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" = "None" ]; then
+    echo "Cleaning broken DB Subnet Group referencing deleted VPC ($DB_VPC)..."
+    aws rds delete-db-subnet-group --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1 || true
+  else
+    terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+  fi
 fi
 
 # 12. Lambda Permission
@@ -95,12 +108,21 @@ if [ -n "$ACCOUNT_ID" ]; then
   terraform import aws_lambda_permission.allow_s3_invoke "TicketDesk-thumbnail-generator/AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" || true
 fi
 
-# 13. Load Balancer
-ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
-if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
-  echo "Importing existing Load Balancer..."
-  terraform import aws_lb.main "$ALB_ARN" || true
+# 13. Load Balancer Validation & Import
+ALB_VPC=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].VpcId" --output text 2>/dev/null || echo "")
+if [ -n "$ALB_VPC" ] && [ "$ALB_VPC" != "None" ]; then
+  VPC_EXISTS=$(aws ec2 describe-vpcs --vpc-ids "$ALB_VPC" --region us-east-1 --query "Vpcs[0].VpcId" --output text 2>/dev/null || echo "")
+  if [ -z "$VPC_EXISTS" ] || [ "$VPC_EXISTS" = "None" ]; then
+    echo "Cleaning broken Load Balancer referencing deleted VPC ($ALB_VPC)..."
+    ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
+    aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" --region us-east-1 >/dev/null 2>&1 || true
+    sleep 5
+  else
+    ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
+    terraform import aws_lb.main "$ALB_ARN" || true
+  fi
 fi
+
 
 echo "Import check complete. Proceeding with clean deployment..."
 
