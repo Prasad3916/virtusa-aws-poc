@@ -123,6 +123,16 @@ if aws cloudwatch describe-alarms --alarm-names "TicketDesk-RDS-High-CPU" --regi
 fi
 
 
+# 0. Clean up unused unattached EIPs to prevent AddressLimitExceeded
+echo "Checking and releasing unattached Elastic IPs..."
+UNATTACHED_EIPS=$(aws ec2 describe-addresses --region us-east-1 --query "Addresses[?AssociationId==null].AllocationId" --output text 2>/dev/null || echo "")
+for eip in $UNATTACHED_EIPS; do
+  if [ -n "$eip" ] && [ "$eip" != "None" ]; then
+    echo "Releasing unattached Elastic IP: $eip"
+    aws ec2 release-address --allocation-id "$eip" --region us-east-1 >/dev/null 2>&1 || true
+  fi
+done
+
 # 13. S3 Buckets
 if [ -n "$ACCOUNT_ID" ]; then
   if aws s3api head-bucket --bucket "ticketdesk-frontend-$ACCOUNT_ID" >/dev/null 2>&1; then
@@ -133,7 +143,13 @@ if [ -n "$ACCOUNT_ID" ]; then
   fi
 fi
 
+# 14. Lambda Permission
+if [ -n "$ACCOUNT_ID" ]; then
+  terraform import aws_lambda_permission.allow_s3_invoke "TicketDesk-thumbnail-generator/AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" || true
+fi
+
 echo "Import check complete. Proceeding with terraform apply..."
+
 
 
 
