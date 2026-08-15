@@ -76,4 +76,31 @@ if [ -n "$ACCOUNT_ID" ]; then
   fi
 fi
 
+# 10. Target Group
+TG_ARN=$(aws elbv2 describe-target-groups --names "ticketdesk-tg" --region us-east-1 --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
+  echo "Importing existing Target Group..."
+  terraform import aws_lb_target_group.api "$TG_ARN" || true
+fi
+
+# 11. DB Subnet Group
+if aws rds describe-db-subnet-groups --db-subnet-group-name "ticketdesk-db-subnet-group" --region us-east-1 >/dev/null 2>&1; then
+  echo "Importing existing DB Subnet Group..."
+  terraform import aws_db_subnet_group.main "ticketdesk-db-subnet-group" || true
+fi
+
+# 12. Lambda Permission
+if [ -n "$ACCOUNT_ID" ]; then
+  echo "Importing existing Lambda Permission..."
+  terraform import aws_lambda_permission.allow_s3_invoke "TicketDesk-thumbnail-generator/AllowS3InvokeThumbnailGenerator-$ACCOUNT_ID" || true
+fi
+
+# 13. Load Balancer
+ALB_ARN=$(aws elbv2 describe-load-balancers --names "ticketdesk-alb" --region us-east-1 --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
+if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+  echo "Importing existing Load Balancer..."
+  terraform import aws_lb.main "$ALB_ARN" || true
+fi
+
 echo "Import check complete. Proceeding with clean deployment..."
+
